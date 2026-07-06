@@ -1,0 +1,14 @@
+# deps / runtime
+node_modules/
+bun.lockb.orig
+
+# secrets & personal paths
+.env
+
+# data & sessions (never commit)
+data/
+browser-profile/
+
+# test artifacts
+test-results/
+playwright-report/
