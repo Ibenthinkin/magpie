@@ -25,9 +25,9 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 - [x] `extractListings(pageText, target)` → structured rows via `generateObject`; drop invalid rows with a warning (never crash). — `src/engine/extract.ts`; lenient LLM schema + per-row strict validation; smoke got 40/40 valid rows off live eBay.
 
 ### Rank + report
-- [ ] Deterministic `landedCost` (price + shipping) sort; one-line LLM verdict per top listing.
+- [x] Deterministic `landedCost` (price + shipping) sort; one-line LLM verdict per top listing. — `src/engine/rank.ts` (pure `landedCost` + single batched verdict pass). **Refinement pending:** relevance-aware ordering so accessories don't outrank real units — see `log.md` "pick up here".
 - [ ] Post top-N results as Discord embeds (listing card: title link, landed cost, condition, source, thumbnail, verdict) to the channel.
-- [ ] Console-log per-step timings + token cost for the run.
+- [x] Console-log per-step timings + token cost for the run. — `scripts/smoke-rank.ts` logs elapsed + token totals.
 
 ### Exit criteria
 - [ ] **A real `/hunt` (or hardcoded query) for a known item returns sanely-ranked real eBay listings as embeds.** Extraction quality judged good enough to proceed. Note observed per-hunt token cost.

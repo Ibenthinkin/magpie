@@ -10,6 +10,7 @@ messages. `/brief` reads this. Newest on top.
 - Browser layer: persistent-context Chromium (`src/browser/session.ts`) with a real-Chrome UA and `HEADLESS` toggle; `scripts/login.ts` for the one-time manual eBay login (session persists across restarts, profile mode 700).
 - LLM wrapper (`src/engine/llm.ts`) over OpenRouter / Claude Sonnet 5 — single call path with token accounting.
 - Target parser (`src/engine/target.ts`) and eBay guided search + extraction (`src/sources/ebay.ts`, `src/engine/extract.ts`). End-to-end smoke: freeform query → 40/40 valid structured listings off live eBay.
+- Ranking (`src/engine/rank.ts`): pure `landedCost` (price + shipping) sort + a single batched LLM verdict pass. Verdicts are sharp — correctly flag accessories/parts and a suspiciously-cheap "mouse".
 - This in-repo `log.md` convention + `/brief` integration.
 
 **Decisions:**
@@ -22,6 +23,6 @@ messages. `/brief` reads this. Newest on top.
 - OpenRouter is prepaid; the first real LLM call 402'd until credits were added.
 - Per-hunt token cost is dominated by extraction *output* tokens (~5.6k out for 40 rows). Levers if it bites: cap extracted rows, or run extraction on Haiku while keeping verdicts on Sonnet.
 
-**Open / next:**
-- Phase 0 ranking: deterministic `landedCost` (price + shipping) sort + one-line LLM verdict per top listing.
-- Then post top-N as Discord embeds (first gateway wiring).
+**Open / next (pick up here):**
+- **Relevance-aware ranking** — the ranker runs, but pure landed-cost sort surfaces junk: accessories/parts/cases float above real units, burying the actual $60–70 mice below the top-5 cutoff. Verdicts correctly say "not the mouse," but the *ordering* is unhelpful — collides with the "sanely-ranked real listings" exit criterion. Agreed fix (designed, not yet built): verdict pass also returns a `matchesTarget` boolean; judge relevance over a *wider* slice (~top 15, **before** the top-N cutoff, still one batched call); final sort `matchesTarget` desc → `landedCost` asc → take top 5. Last substantive Phase 0 gap.
+- Then post top-N as Discord embeds (first gateway wiring) — closes Phase 0.

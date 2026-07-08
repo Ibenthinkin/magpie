@@ -4,6 +4,7 @@ bun.lockb.orig
 
 # secrets & personal paths
 .env
+*.env
 
 # data & sessions (never commit)
 data/

@@ -1,0 +1,27 @@
+{
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "login": "HEADLESS=false bun run scripts/login.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "ai": "^7.0.16",
+    "croner": "^10.0.1",
+    "discord.js": "^14.26.4",
+    "drizzle-orm": "^0.45.2",
+    "nanoid": "^5.1.16",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "drizzle-kit": "^0.31.10",
+    "playwright": "^1.61.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
