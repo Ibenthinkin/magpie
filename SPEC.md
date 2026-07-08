@@ -327,7 +327,6 @@ One hunt, end to end (`src/engine/hunt.ts`):
 | `MAGPIE_DB_PATH` | SQLite file (default `data/magpie.db`) |
 | `BROWSER_PROFILE_DIR` | persistent Chromium profile (default `browser-profile/`) |
 | `HEADLESS` | `false` for login/debug sessions |
-| `VAULT_LOG_PATH` | see §16 — dev machine only, never committed |
 
 ## 11. Security considerations
 
@@ -382,11 +381,8 @@ Production-grade from the start (portfolio / work-transferable practice — non-
 - **Chrome profile vs. detection.** Persistent-context headless Chromium may still be fingerprinted by hard sources; headed-in-xvfb or a real `channel: 'chrome'` install are the fallbacks. *Decided empirically in Phase 4 — not an MVP concern.*
 - **"Best deal" definition depth** (deferred from refine): how far coupon/promo hunting goes beyond stored memberships (e.g. actively searching coupon sites) — *scoped in Phase 3.*
 
-## 16. Project setup — rollup to planning vault
+## 16. Project log — rollup to planning vault
 
-This project rolls progress back to a private planning vault so it surfaces in Ben's Daily Brief. As part of initial setup:
+This project rolls progress back to Ben's Daily Brief via an **in-repo narrative log**: `log.md` at the repo root, append-only, newest on top. It complements commits (which record *what changed in code*) by capturing decisions, findings, and dead-ends. The vault's `/brief` skill reads `log.md` directly at brief-time (resolving this repo's path from the vault project note's `repo:` field), so no vault-side var or path is needed. See `CLAUDE.md` → "Project log (`log.md`)" for the format and write triggers.
 
-1. **Keep the path out of git.** The absolute path to this project's vault running log lives in `.env` as `VAULT_LOG_PATH` (the Idea Forge handoff usually pre-creates this file). Ensure `.env` is listed in `.gitignore`; if a `.env` isn't present, create one — `VAULT_LOG_PATH="$HOME/vaults/Memory-Palace/05 Projects/<name>/log.md"` — and commit a `.env.example` with the key but an empty value.
-2. **Add a rollup pointer to this repo's `CLAUDE.md`** (reference the variable, never the literal path):
-
-   > **Rollup to planning vault.** At the end of any session that made real progress, read `VAULT_LOG_PATH` from `.env` and append a one-line milestone entry to that file — format `- [[MM-DD-YY ddd]] — <what changed>`, newest under the latest `## YYYY-MM` header. Commits are pulled into the Daily Brief automatically; this log is for the narrative beats worth reading later.
+Format: `## YYYY-MM` month groupers → `### [[MM-DD-YY ddd]] — <title>` day entries with `**Shipped:** / **Decisions:** / **Open / next:**` sub-bullets (flexible; one entry per day, extended rather than duplicated). Written on-demand, at commit checkpoints, and as an end-of-session backstop.
