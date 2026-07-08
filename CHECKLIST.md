@@ -7,11 +7,11 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 > Goal: mode A against **eBay only**, end to end, posting result embeds to a Discord channel. Validates the core loop, extraction quality, and Discord plumbing before any breadth. **Throwaway code is acceptable here** — the point is learning, not architecture.
 
 ### Setup & secrets
-- [ ] Create a Discord application + bot; enable the necessary gateway intents; generate the bot token.
-- [ ] Invite the bot to the personal guild; create/choose Magpie's channel; collect guild id, channel id, own user id.
-- [ ] Create an OpenRouter account + API key; pick a default model id for `MAGPIE_MODEL` (an Anthropic Claude).
-- [ ] Populate `.env` from `.env.example` (all vars in SPEC §10); confirm `.env` is gitignored.
-- [ ] `bunx playwright install chromium` (and confirm it runs on this Mac).
+- [x] Create a Discord application + bot; enable the necessary gateway intents; generate the bot token.
+- [x] Invite the bot to the personal guild; create/choose Magpie's channel; collect guild id, channel id, own user id.
+- [x] Create an OpenRouter account + API key; pick a default model id for `MAGPIE_MODEL` (an Anthropic Claude). — verified via live LLM calls in Phase 0.
+- [x] Populate `.env` from `.env.example` (all vars in SPEC §10); confirm `.env` is gitignored. — `.env` populated (443 B) and gitignored.
+- [x] `bunx playwright install chromium` (and confirm it runs on this Mac). — `chromium-1228` installed; smoke-verified against live eBay.
 
 ### Browser + login
 - [x] Minimal persistent-context launch (`chromium.launchPersistentContext(BROWSER_PROFILE_DIR)`), real-Chrome UA, headed toggle via `HEADLESS`. — `src/browser/session.ts`; smoke-verified against real eBay, UA carries no Headless tell.
@@ -25,7 +25,7 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 - [x] `extractListings(pageText, target)` → structured rows via `generateObject`; drop invalid rows with a warning (never crash). — `src/engine/extract.ts`; lenient LLM schema + per-row strict validation; smoke got 40/40 valid rows off live eBay.
 
 ### Rank + report
-- [x] Deterministic `landedCost` (price + shipping) sort; one-line LLM verdict per top listing. — `src/engine/rank.ts` (pure `landedCost` + single batched verdict pass). **Refinement pending:** relevance-aware ordering so accessories don't outrank real units — see `log.md` "pick up here".
+- [x] Deterministic `landedCost` (price + shipping) sort; two-pass LLM ranking. — `src/engine/rank.ts`: pure `landedCost` + **pass 1** cheap `matchesTarget` triage (bool only) over *all* extracted rows → sort `matchesTarget` desc → `landedCost` asc → top 5 → **pass 2** prose verdict per finalist. Smoke: top-5 are all genuine MX Master 3S units, accessories/parts fully excluded. ~11.3k in / 6.6k out tokens/run.
 - [ ] Post top-N results as Discord embeds (listing card: title link, landed cost, condition, source, thumbnail, verdict) to the channel.
 - [x] Console-log per-step timings + token cost for the run. — `scripts/smoke-rank.ts` logs elapsed + token totals.
 
