@@ -5,6 +5,15 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-10-26 Fri]] — bun:sqlite doesn't work under vitest
+
+**Findings / gotchas:**
+- **`bun:sqlite` cannot be imported inside a vitest test file, full stop.** Confirmed with a throwaway probe (`tests/probe-bun-sqlite.test.ts`): `vitest run` (invoked via `bun run test`) fails with `Cannot find package 'bun:sqlite'`. Tried the two standard workarounds — `test.server.deps.external: [/^bun:/]` and `pool: 'threads'`, together and separately — neither works. With externalization on, the error changes to Node's ESM loader rejecting the `bun:` scheme outright (`Only URLs with a scheme in: file, data, and node are supported`), which means vitest/vite-node's module runner falls back to a Node-based loader for native-protocol imports regardless of which runtime (`bun run`) invoked vitest. This looks like a real vitest/vite-node limitation, not a config mistake on our end.
+- This matters immediately: CLAUDE.md commits to `bun run test = vitest run`, and the next unchecked Phase 1 item is `src/db/client.ts` on `bun:sqlite`.
+
+**Decisions:**
+- Keep `bun:sqlite` as the Phase 1 db driver (not switching to `better-sqlite3`). `src/db/client.ts` stays a thin `bun:sqlite` singleton; everything built on top of it (`hunts.ts`, `listings.ts`, repositories) is unit-tested in vitest via mocks/fakes, never a live db. A small number of true integration tests exercise the real sqlite path via `bun test` (Bun's native runner) instead of `vitest run`. Recorded in `CHECKLIST.md` under Phase 1 Database.
+
 ### [[07-09-26 Thu]] — Discord embeds land; eBay adapter was scraping the wrong DOM
 
 **Shipped:**

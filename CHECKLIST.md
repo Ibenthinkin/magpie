@@ -42,6 +42,11 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 - [ ] Structured console logger (one line per hunt step; status/timings/cost fields).
 
 ### Database (Drizzle + bun-sqlite)
+> `bun:sqlite` cannot be imported inside a vitest test file — confirmed, not a config
+> issue (see log.md 07-10). `src/db/client.ts` stays on `bun:sqlite`; everything above
+> it (`hunts.ts`, `listings.ts`, etc.) is exercised in vitest through a repository
+> interface / mocks, not a live db. A small set of real-sqlite integration tests run
+> separately via `bun test` (Bun's native runner), not `bun run test`.
 - [ ] `src/db/schema.ts` — all tables from SPEC §5 (`profile_fact`, `watch`, `hunt`, `listing`, `hunt_result`, `watch_hit`) + indexes §5.7. (Define all now even though watch/profile land later — one migration baseline.)
 - [ ] `drizzle.config.ts`; `bun run db:generate` → migration; `bun run db:migrate` creates `data/magpie.db`.
 - [ ] `src/db/client.ts` — bun-sqlite singleton, WAL mode, `MAGPIE_DB_PATH`.
