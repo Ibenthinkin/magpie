@@ -13,7 +13,10 @@ const looseRowSchema = z.object({
   priceCents: z.number().nullable().describe('item price as integer US cents'),
   shippingCents: z.number().nullable().describe('shipping as integer US cents; null if free or unknown'),
   condition: z.string().nullable().describe('condition text as shown, or null'),
-  url: z.string().nullable().describe('listing URL if present, else null'),
+  url: z
+    .string()
+    .nullable()
+    .describe('copy the URL verbatim from the row\'s "URL:" line; null if the row has none. Never construct one'),
 });
 const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 
