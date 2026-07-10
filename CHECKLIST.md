@@ -8,7 +8,7 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 
 ### Setup & secrets
 - [x] Create a Discord application + bot; enable the necessary gateway intents; generate the bot token.
-- [x] Invite the bot to the personal guild; create/choose Magpie's channel; collect guild id, channel id, own user id.
+- [x] Invite the bot to the personal guild; create/choose Magpie's channel; collect guild id, channel id, own user id. — guild + channel ids in `.env`, both verified by a live post. `DISCORD_ALLOWED_USER_IDS` still empty; only needed by the Phase 1 receive path.
 - [x] Create an OpenRouter account + API key; pick a default model id for `MAGPIE_MODEL` (an Anthropic Claude). — verified via live LLM calls in Phase 0.
 - [x] Populate `.env` from `.env.example` (all vars in SPEC §10); confirm `.env` is gitignored. — `.env` populated (443 B) and gitignored.
 - [x] `bunx playwright install chromium` (and confirm it runs on this Mac). — `chromium-1228` installed; smoke-verified against live eBay.
@@ -26,11 +26,11 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 
 ### Rank + report
 - [x] Deterministic `landedCost` (price + shipping) sort; two-pass LLM ranking. — `src/engine/rank.ts`: pure `landedCost` + **pass 1** cheap `matchesTarget` triage (bool only) over *all* extracted rows → sort `matchesTarget` desc → `landedCost` asc → top 5 → **pass 2** prose verdict per finalist. Smoke: top-5 are all genuine MX Master 3S units, accessories/parts fully excluded. ~11.3k in / 6.6k out tokens/run.
-- [ ] Post top-N results as Discord embeds (listing card: title link, landed cost, condition, source, thumbnail, verdict) to the channel.
+- [x] Post top-N results as Discord embeds (listing card: title link, landed cost, condition, source, thumbnail, verdict) to the channel. — `src/discord/embeds.ts` (pure builders) + `scripts/smoke-discord.ts` (send-only gateway login). Thumbnail deferred: extraction captures no image URL yet (Phase 1).
 - [x] Console-log per-step timings + token cost for the run. — `scripts/smoke-rank.ts` logs elapsed + token totals.
 
 ### Exit criteria
-- [ ] **A real `/hunt` (or hardcoded query) for a known item returns sanely-ranked real eBay listings as embeds.** Extraction quality judged good enough to proceed. Note observed per-hunt token cost.
+- [x] **A real `/hunt` (or hardcoded query) for a known item returns sanely-ranked real eBay listings as embeds.** Extraction quality judged good enough to proceed. Note observed per-hunt token cost. — MX Master 3S: 60/60 rows extracted, top-5 all genuine units with resolving `/itm/` links. ~14.0k in / 12.7k out tokens, ~104s.
 
 ## Phase 1 — One-shot (A) + advisor (C): real scaffold
 
