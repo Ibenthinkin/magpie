@@ -5,6 +5,12 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-11-26 Sat]] — System map artifact
+
+**Shipped:**
+- Published a one-page architecture/system-design artifact for Magpie — physical topology, layered service architecture, the three engine-mode data flows, and the load-bearing invariants: https://claude.ai/code/artifact/2d576775-2542-4021-b5d4-cf9e1a7d4955. Styled as a sibling of the Sibyl system map (same editorial layout, magpie-teal palette instead of Sibyl gold).
+- The live-vs-planned split reflects the *repo's* actual state, not the spec's aspiration: Phase 0 pieces (`session.ts`, `ebay.ts`, `target/extract/rank/llm`, `embeds.ts`) marked built; everything Phase 1+ dashed with its phase tag, including the pulled-forward `pacing.ts` and the `bun:sqlite`/vitest test split from the 07-10 finding. Worth re-publishing at phase boundaries so it stays honest.
+
 ### [[07-10-26 Fri]] — bun:sqlite doesn't work under vitest
 
 **Findings / gotchas:**
