@@ -1,0 +1,5 @@
+# Scope `bun test` to the bun-native suite only. Vitest owns tests/unit/**;
+# bun:sqlite cannot load under vitest (see log.md 07-10), so the real-sqlite
+# tests live under tests/bun/** and run with `bun test`.
+[test]
+root = "tests/bun"
