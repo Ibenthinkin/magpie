@@ -5,6 +5,21 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-14-26 Tue]] — Phase 1 scaffold begins: config, DB/queue, sources layer
+
+**Shipped** (overnight autonomous session, branch `phase-1-scaffold`, milestones M0–M2 of the approved plan):
+- **M0 — real project scaffold.** `tsconfig.json` (strict), `src/config.ts` (typed loader for all SPEC §10 vars, empty-string-as-unset, allowlist csv → array), `src/log.ts`, and the test-runner split: vitest owns `tests/unit/**`, `bun test` owns `tests/bun/**` (via `bunfig.toml` `[test] root`) so the 07-10 bun:sqlite/vitest finding is solved structurally, not by convention.
+- **M1 — DB layer.** Full six-table SPEC §5 schema in one baseline Drizzle migration (watch/profile tables land now, logic later). drizzle-kit is codegen-only; migrations apply at runtime via the bun-sqlite migrator, so drizzle-kit never needs a driver. `claimNextHunt()` is a single atomic `UPDATE … RETURNING` with a rowid FIFO tie-break. Repos are factories over an injected db + clock, coded against `HuntsRepo`/`ListingsRepo` interfaces so everything above the DB stays vitest-testable.
+- **M2 — sources layer.** `SourceAdapter` interface (`search()` returns `RawListing[]`; pure `toListing()` → §5.4 shape, `null` = unusable row), registry with `resolveAdapters` (unknown ids skipped loudly; fixture source opt-in only, never default), eBay promoted into the adapter shape, and a **deterministic fixture adapter** over a hand-authored local static site — the engine's offline/free e2e path. `pacing.ts` landed (per-source min-gap + hourly sliding window, injectable clock). 22 vitest + 13 bun tests green, incl. real-Playwright fixture-adapter tests on a throwaway browser.
+
+**Decisions:**
+- `@playwright/test` dropped for Phase 1: the SPEC §13 `test:e2e` script would run under Node where `bun:sqlite` doesn't exist; the e2e uses the playwright *library* under `bun test` instead (`test:e2e` = `bun test tests/bun/e2e`). SPEC needs a one-line amendment.
+- `llm.ts` model init went lazy (was module-top-level env reads) so adapters/extract stay importable under vitest with the LLM mocked.
+- Fixture HTML is hand-authored (a stable fake-market markup contract with deliberate edge-case cards), not captured eBay HTML — we control the edge cases and dodge markup churn.
+- Empty `DISCORD_ALLOWED_USER_IDS` will mean *warn loudly at boot, deny all interactions* (it's still empty in `.env`) — so overnight live verification is send-only; the receive path gets exercised once the allowlist is filled.
+
+**Open / next:** M3 engine orchestrator (`hunt.ts`, per-hunt cost accounting in `llm.ts`, deterministic pre-filter) → M4 worker + `index.ts` → M5 gateway + `/hunt` → M6 `/advise` → M7 offline e2e → M8 live gates → stretch Phase 2 groundwork → PR.
+
 ### [[07-11-26 Sat]] — System map artifact
 
 **Shipped:**
