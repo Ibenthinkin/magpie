@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { rawListingSchema, type RawListing } from '../sources/types';
 import { genObject } from './llm';
 import type { TargetSpec } from './target';
 
@@ -20,16 +21,9 @@ const looseRowSchema = z.object({
 });
 const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 
-// Strict shape a usable listing must satisfy (local validation only — never sent
-// to the LLM, so string min-length keywords are fine here).
-export const rawListingSchema = z.object({
-  title: z.string().min(1),
-  priceCents: z.number(),
-  shippingCents: z.number().nullable(),
-  condition: z.string().nullable(),
-  url: z.string().nullable(),
-});
-export type RawListing = z.infer<typeof rawListingSchema>;
+// The strict row shape (rawListingSchema) lives in sources/types.ts with the
+// rest of the adapter contract; re-exported here for existing callers.
+export { rawListingSchema, type RawListing };
 
 const SYSTEM = [
   'You extract product listings from marketplace search-results page text.',

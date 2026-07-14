@@ -1,5 +1,7 @@
 import type { Page } from 'playwright';
+import { extractListings } from '../engine/extract';
 import type { TargetSpec } from '../engine/target';
+import type { NormalizedListing, RawListing, SourceAdapter } from './types';
 
 // Guided eBay search: deterministic URL from the target, then grab reduced page
 // text for LLM extraction (LLM is used for extraction, not navigation). SPEC §6.3.
@@ -118,3 +120,36 @@ export async function fetchResultsText(page: Page, target: TargetSpec): Promise<
 
   return blocks.join('\n\n');
 }
+
+// The canonical URL fetchResultsText emits: tracking params already stripped.
+const CANONICAL_ITEM = /^https:\/\/www\.ebay\.com\/itm\/(\d{9,})$/;
+
+export const ebayAdapter: SourceAdapter = {
+  source: 'ebay',
+  // Conservative: eBay is the crown-jewel logged-in session, don't hammer it.
+  rateLimit: { minDelayMs: 20_000, maxPerHour: 30 },
+
+  async search(page: Page, target: TargetSpec): Promise<RawListing[]> {
+    const text = await fetchResultsText(page, target);
+    return extractListings(text, target);
+  },
+
+  toListing(raw: RawListing): NormalizedListing | null {
+    const id = raw.url?.match(CANONICAL_ITEM)?.[1];
+    if (!id || !raw.url) return null; // no verifiable item URL → unusable row
+    return {
+      source: 'ebay',
+      sourceId: id,
+      url: raw.url,
+      title: raw.title,
+      priceCents: raw.priceCents,
+      shippingCents: raw.shippingCents,
+      currency: 'USD',
+      condition: raw.condition,
+      sellerRating: null, // not extracted yet (Phase 3 refinement)
+      location: null,
+      imageUrl: null,
+      rawJson: JSON.stringify(raw),
+    };
+  },
+};
