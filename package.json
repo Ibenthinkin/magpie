@@ -4,9 +4,11 @@
     "start": "bun run src/index.ts",
     "login": "HEADLESS=false bun run scripts/login.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "bun run scripts/migrate.ts",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:db": "bun test tests/bun/db",
+    "test:e2e": "bun test tests/bun/e2e"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",
