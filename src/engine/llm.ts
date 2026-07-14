@@ -12,9 +12,16 @@ function env(key: string): string {
   return v;
 }
 
-const MODEL_ID = env('MAGPIE_MODEL');
-const openrouter = createOpenRouter({ apiKey: env('OPENROUTER_API_KEY') });
-const model = openrouter.chat(MODEL_ID);
+// Lazy init: modules that import this one must stay loadable without env vars
+// (vitest imports adapters → extract → here with the LLM mocked).
+let modelId: string | undefined;
+let model: ReturnType<ReturnType<typeof createOpenRouter>['chat']> | undefined;
+
+function getModel() {
+  modelId ??= env('MAGPIE_MODEL');
+  model ??= createOpenRouter({ apiKey: env('OPENROUTER_API_KEY') }).chat(modelId);
+  return model;
+}
 
 // Process-lifetime token tally. In Phase 1 this accrues per-hunt into cost_cents.
 let runInputTokens = 0;
@@ -32,7 +39,7 @@ export async function genObject<T>(opts: {
   label?: string; // identifies the call site in logs
 }): Promise<T> {
   const { object, usage } = await generateObject({
-    model,
+    model: getModel(),
     schema: opts.schema,
     system: opts.system,
     prompt: opts.prompt,
@@ -43,7 +50,7 @@ export async function genObject<T>(opts: {
   runInputTokens += inTok;
   runOutputTokens += outTok;
   console.log(
-    `[llm] ${opts.label ?? 'genObject'} model=${MODEL_ID} in=${inTok} out=${outTok} ` +
+    `[llm] ${opts.label ?? 'genObject'} model=${modelId} in=${inTok} out=${outTok} ` +
       `(run total in=${runInputTokens} out=${runOutputTokens})`,
   );
 

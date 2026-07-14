@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { genObject } from './llm';
-import type { RawListing } from './extract';
+import type { RawListing } from '../sources/types';
 import type { TargetSpec } from './target';
 
 // Ranking = deterministic math first, LLM second. `landedCost` is pure and
