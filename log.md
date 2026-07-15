@@ -5,6 +5,19 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-15-26 Wed]] — M4 worker + Discord surface underway (M5)
+
+**Shipped** (continuing the Phase 1 plan on `phase-1-scaffold`):
+- **M4 — worker loop.** `src/watch/worker.ts` (it lives under `watch/` per SPEC §2.2 because Phase 2's `watch_run` hunts flow through the same loop): claim → run → repeat at concurrency 1, 5s idle sleep, graceful `stop()` that never interrupts an in-flight hunt, and a belt-and-braces catch so a `runHunt` bug can't kill the queue. `src/index.ts` deliberately **not** written yet — writing it once after the gateway exists beats wiring a throwaway console reporter now and re-wiring in M5.
+- **`withUsage` refactor in `llm.ts`.** Found while designing `/hunt`: the module-level `beginUsage()/endUsage()` bracket would be clobbered if a command-side `parseTarget` interleaved with a running hunt (gateway and worker share one process) — the hunt's cost would be lost entirely. Usage brackets are now AsyncLocalStorage-scoped; concurrent brackets can't cross-contaminate (test proves it), and failure paths read `usage()` from the catch block so spent cents still land on failed hunts.
+- **M5 started — Discord surface.** `hub.ts` (channel binding + allowlist guard + identity; empty allowlist = deny all, flagged for the boot warning) and `commands/hunt.ts` (defer → parse → one-line confirm → enqueue; `max_price`/`sources` options act as hard overrides on the parsed spec; parse LLM cost rides onto the hunt row via `initialCostCents`).
+
+**Decisions:**
+- Command handlers are coded against narrow structural "interaction ports" (`HuntInteractionPort`) rather than discord.js types — the real `ChatInputCommandInteraction` satisfies them structurally, and handler tests use plain fakes (SPEC §12's "handler level with mocked interactions") with the *real* `parseTarget` running through the LLM seam, so cost attribution is tested end-to-end.
+- `DEFAULT_SOURCES` exported from the registry so the `/hunt` confirmation line states the effective sources instead of hardcoding "eBay".
+
+**Open / next (paused mid-TDD):** `tests/unit/report.test.ts` is written and RED — `src/discord/report.ts` (Reporter port → header + embed cards, nothing-found card, error embed + a new `buildErrorEmbed` in embeds.ts) is the next GREEN step. Then gateway.ts (client, guild-scoped registration, hub-guarded routing) → `index.ts` composition root → M6 `/advise` → M7 offline e2e → M8 live gates → PR.
+
 ### [[07-14-26 Tue]] — Phase 1 scaffold begins: config, DB/queue, sources layer
 
 **Shipped** (overnight autonomous session, branch `phase-1-scaffold`, milestones M0–M2 of the approved plan):
