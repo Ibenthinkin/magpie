@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { beginUsage, endUsage, genObject, genText, setGenerateForTests } from '../../src/engine/llm';
+import { genObject, genText, setGenerateForTests, withUsage } from '../../src/engine/llm';
 
-// D6: per-hunt usage accounting. beginUsage()/endUsage() bracket a hunt run
-// (worker concurrency 1, so a module-level active tally is safe); cost prefers
-// the OpenRouter-reported USD figure, else a pricing-constant estimate; always
-// rounded UP to whole cents. setGenerateForTests() is the offline seam.
+// Per-hunt usage accounting. withUsage() scopes a tally to its async context
+// (AsyncLocalStorage), so the worker's hunt bracket and a command-side
+// parseTarget bracket can interleave in one process without clobbering each
+// other. Cost prefers the OpenRouter-reported USD figure, else a pricing-
+// constant estimate; always rounded UP to whole cents. setGenerateForTests()
+// is the offline seam.
 
 afterEach(() => setGenerateForTests(null));
 
@@ -37,17 +39,18 @@ describe('setGenerateForTests seam', () => {
   });
 });
 
-describe('beginUsage/endUsage', () => {
+describe('withUsage', () => {
   it('tallies tokens across calls and prefers provider-reported cost, rounded up to cents', async () => {
     setGenerateForTests(() => ({
       object: { ok: true },
       usage: { inputTokens: 1000, outputTokens: 200 },
       costUsd: 0.0123, // 1.23 cents → rounds UP to 2
     }));
-    beginUsage();
-    await genObject({ schema: shape, prompt: 'a' });
-    await genObject({ schema: shape, prompt: 'b' });
-    const totals = endUsage();
+    const totals = await withUsage(async (usage) => {
+      await genObject({ schema: shape, prompt: 'a' });
+      await genObject({ schema: shape, prompt: 'b' });
+      return usage();
+    });
     expect(totals.inputTokens).toBe(2000);
     expect(totals.outputTokens).toBe(400);
     expect(totals.costCents).toBe(3); // 2 × $0.0123 = 2.46 cents → ceil 3
@@ -58,40 +61,59 @@ describe('beginUsage/endUsage', () => {
       object: { ok: true },
       usage: { inputTokens: 1000, outputTokens: 1000 },
     }));
-    beginUsage();
-    await genObject({ schema: shape, prompt: 'a' });
-    const totals = endUsage();
+    const totals = await withUsage(async (usage) => {
+      await genObject({ schema: shape, prompt: 'a' });
+      return usage();
+    });
     expect(totals.costCents).toBeGreaterThanOrEqual(1); // estimate rounds up
   });
 
-  it('endUsage resets the tally; a fresh bracket starts at zero', async () => {
-    setGenerateForTests(() => ({
-      object: { ok: true },
-      usage: { inputTokens: 10, outputTokens: 10 },
-      costUsd: 0.01,
-    }));
-    beginUsage();
-    await genObject({ schema: shape, prompt: 'a' });
-    endUsage();
-    beginUsage();
-    const totals = endUsage();
-    expect(totals).toEqual({ inputTokens: 0, outputTokens: 0, costCents: 0 });
+  it('concurrent brackets do not cross-contaminate (worker hunt + command-side parse)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    setGenerateForTests(async () => {
+      await gate; // hold every call until both brackets are in flight
+      return { object: { ok: true }, usage: { inputTokens: 100, outputTokens: 10 }, costUsd: 0.01 };
+    });
+    const huntBracket = withUsage(async (usage) => {
+      await genObject({ schema: shape, prompt: 'extract' });
+      await genObject({ schema: shape, prompt: 'rank' });
+      return usage();
+    });
+    const parseBracket = withUsage(async (usage) => {
+      await genObject({ schema: shape, prompt: 'parse' });
+      return usage();
+    });
+    release();
+    const [hunt, parse] = await Promise.all([huntBracket, parseBracket]);
+    expect(hunt).toEqual({ inputTokens: 200, outputTokens: 20, costCents: 2 });
+    expect(parse).toEqual({ inputTokens: 100, outputTokens: 10, costCents: 1 });
   });
 
-  it('endUsage without beginUsage returns zeros instead of throwing', () => {
-    expect(endUsage()).toEqual({ inputTokens: 0, outputTokens: 0, costCents: 0 });
+  it('usage() is readable mid-bracket, before failure handling', async () => {
+    setGenerateForTests(() => ({ object: { ok: true }, usage: { inputTokens: 10, outputTokens: 5 }, costUsd: 0.02 }));
+    const cost = await withUsage(async (usage) => {
+      await genObject({ schema: shape, prompt: 'a' });
+      try {
+        throw new Error('downstream failure');
+      } catch {
+        return usage().costCents; // failHunt path still lands spent cents
+      }
+    });
+    expect(cost).toBe(2);
   });
 
-  it('calls outside a begin/end bracket still work', async () => {
+  it('calls outside any bracket still work', async () => {
     setGenerateForTests(() => ({ object: { ok: true }, usage: { inputTokens: 5, outputTokens: 5 } }));
     await expect(genObject({ schema: shape, prompt: 'a' })).resolves.toEqual({ ok: true });
   });
 
   it('genText usage is accounted too', async () => {
     setGenerateForTests(() => ({ text: 't', usage: { inputTokens: 100, outputTokens: 50 }, costUsd: 0.005 }));
-    beginUsage();
-    await genText({ prompt: 'p' });
-    const totals = endUsage();
+    const totals = await withUsage(async (usage) => {
+      await genText({ prompt: 'p' });
+      return usage();
+    });
     expect(totals).toEqual({ inputTokens: 100, outputTokens: 50, costCents: 1 });
   });
 });
