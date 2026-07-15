@@ -9,7 +9,7 @@ export const registry: Record<SourceId, SourceAdapter> = {
 
 // Sources a hunt uses when the target names none. The fixture source is test
 // plumbing — resolvable when named, never in the default set.
-const DEFAULT_SOURCES: SourceId[] = ['ebay'];
+export const DEFAULT_SOURCES: SourceId[] = ['ebay'];
 
 /** spec.sources ∩ registry; unknown ids are logged and skipped, never fatal. */
 export function resolveAdapters(sources: string[] | undefined): SourceAdapter[] {
