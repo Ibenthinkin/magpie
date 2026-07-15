@@ -1,10 +1,11 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateObject, generateText } from 'ai';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { z } from 'zod';
 
 // Single LLM call path. Every call flows through here so token usage and cost
-// are accounted in one place; the worker brackets each hunt run with
-// beginUsage()/endUsage() and lands the cents on hunt.cost_cents. SPEC §6.6.
+// are accounted in one place; the worker wraps each hunt run in withUsage()
+// and lands the cents on hunt.cost_cents. SPEC §6.6.
 
 function env(key: string): string {
   const v = process.env[key];
@@ -38,9 +39,15 @@ export interface UsageTotals {
 // overcounting spend is safe, undercounting defeats the budget ceiling.
 const FALLBACK_USD_PER_MTOK = { input: 1, output: 3 };
 
-// Active per-hunt bracket. Module-level is safe: the worker runs hunts at
-// concurrency 1, and command-side parseTarget calls are awaited inline.
-let active: { inputTokens: number; outputTokens: number; costUsd: number } | null = null;
+// Usage brackets are scoped to their async context: the worker's hunt bracket
+// and a command-side parseTarget bracket run concurrently in one process and
+// must not see each other's calls.
+interface Bucket {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+const bucketStore = new AsyncLocalStorage<Bucket>();
 
 // Process-lifetime token tally (diagnostics only).
 let runInputTokens = 0;
@@ -50,17 +57,19 @@ export function tokenTotals(): { inputTokens: number; outputTokens: number } {
   return { inputTokens: runInputTokens, outputTokens: runOutputTokens };
 }
 
-/** Start (or restart) the per-hunt usage bracket. */
-export function beginUsage(): void {
-  active = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
-}
-
-/** Close the bracket: totals since beginUsage(), cost rounded UP to whole cents. */
-export function endUsage(): UsageTotals {
-  const a = active;
-  active = null;
-  if (!a) return { inputTokens: 0, outputTokens: 0, costCents: 0 };
-  return { inputTokens: a.inputTokens, outputTokens: a.outputTokens, costCents: Math.ceil(a.costUsd * 100) };
+/**
+ * Run `fn` with an isolated usage bucket. `usage()` reads the totals so far
+ * (cost rounded UP to whole cents) — call it inside `fn`, including from a
+ * catch block, so failure paths still land the cents already spent.
+ */
+export function withUsage<T>(fn: (usage: () => UsageTotals) => Promise<T>): Promise<T> {
+  const bucket: Bucket = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  const usage = (): UsageTotals => ({
+    inputTokens: bucket.inputTokens,
+    outputTokens: bucket.outputTokens,
+    costCents: Math.ceil(bucket.costUsd * 100),
+  });
+  return bucketStore.run(bucket, () => fn(usage));
 }
 
 function account(label: string, usage: { inputTokens?: number; outputTokens?: number } | undefined, costUsd: number | undefined): void {
@@ -69,10 +78,11 @@ function account(label: string, usage: { inputTokens?: number; outputTokens?: nu
   const usd = costUsd ?? (inTok * FALLBACK_USD_PER_MTOK.input + outTok * FALLBACK_USD_PER_MTOK.output) / 1_000_000;
   runInputTokens += inTok;
   runOutputTokens += outTok;
-  if (active) {
-    active.inputTokens += inTok;
-    active.outputTokens += outTok;
-    active.costUsd += usd;
+  const bucket = bucketStore.getStore();
+  if (bucket) {
+    bucket.inputTokens += inTok;
+    bucket.outputTokens += outTok;
+    bucket.costUsd += usd;
   }
   console.log(
     `[llm] ${label} model=${modelId ?? 'fake'} in=${inTok} out=${outTok} usd=${usd.toFixed(6)}` +
