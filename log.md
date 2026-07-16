@@ -5,6 +5,23 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-16-26 Thu]] — M5–M7 land: full Discord surface, /advise, offline e2e
+
+**Shipped** (continuing on `phase-1-scaffold`; vitest 80 + bun 15, all green, typecheck clean):
+- **M5 complete.** `report.ts` (Reporter port → header + cards / nothing-found / new `buildErrorEmbed`; send failures propagate so undelivered results become `failHunt`, never silently "done"), `gateway.ts` (dumb IO glue: guild-scoped command registration, hub-guarded routing, last-resort error net per interaction), and `index.ts` — the composition root wiring config → db + `resetStaleRunning` → hub → gateway → reporter → worker, with SIGINT/SIGTERM draining the in-flight hunt.
+- **M6 — `/advise` (mode C).** `engine/advisor.ts`: one `genObject` turn per round — clarifying questions until ready, then 2–4 concrete candidates each carrying a concretized `TargetSpec`; a `force` flag (round cap / reply timeout) makes questions unacceptable. Discord flow: thread off the deferred reply, bounded Q&A (3 rounds, 10-min reply timeout), candidate cards with **Hunt this**/**Watch this** buttons. Sessions are in-memory keyed by thread id (restart expires buttons — acceptable at personal scale); advisor LLM spend bills onto the *first* hunt enqueued from the session. Watch button is a friendly Phase 2 stub.
+- **M7 — offline e2e.** Full pipeline through the real queue: enqueue → worker claim → fixture adapter under real Playwright → ranked `hunt_result` rows in a real SQLite db → reporter; plus the loud-failure path. Only the LLM is seamed. Free and offline.
+
+**Findings / gotchas:**
+- **An accidental live boot proved index.ts works.** Tried to smoke-test the "fails loud without env" path with `env -i` — but Bun auto-loads `.env` from cwd regardless, so the process booted for real: gateway logged in, registered commands on the guild, worker idled until killed. Unintended but harmless (queue was empty), and it *was* a successful boot smoke. Lesson: `bun run src/index.ts` is never env-isolated in-repo.
+- Buttons arrive in advisor *threads*, so the hub's channel binding can't apply — added `hub.permitsUser()` (allowlist-only) for interactions on our own messages; channel binding stays mandatory for slash commands.
+
+**Decisions:**
+- Gateway now needs **GuildMessages + MessageContent intents** (thread Q&A replies). MessageContent is privileged — **must be enabled in the Discord dev portal before `/advise` works live**.
+- `/advise` hunt results post into the advisor thread (button's channel), keeping context together rather than spamming the main channel.
+
+**Open / next:** M8 live gates — fill `DISCORD_ALLOWED_USER_IDS`, enable MessageContent intent, then a controlled live boot + real `/hunt` and `/advise` smoke. Then Phase 2 groundwork (watch scheduler/dedup) if time allows, and the PR.
+
 ### [[07-15-26 Wed]] — M4 worker + Discord surface underway (M5)
 
 **Shipped** (continuing the Phase 1 plan on `phase-1-scaffold`):
