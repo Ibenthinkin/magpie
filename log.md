@@ -20,7 +20,10 @@ messages. `/brief` reads this. Newest on top.
 - Gateway now needs **GuildMessages + MessageContent intents** (thread Q&A replies). MessageContent is privileged — **must be enabled in the Discord dev portal before `/advise` works live**.
 - `/advise` hunt results post into the advisor thread (button's channel), keeping context together rather than spamming the main channel.
 
-**Open / next:** M8 live gates — fill `DISCORD_ALLOWED_USER_IDS`, enable MessageContent intent, then a controlled live boot + real `/hunt` and `/advise` smoke. Then Phase 2 groundwork (watch scheduler/dedup) if time allows, and the PR.
+**M8 live smoke (later the same day)** — both gates were already clear (allowlist filled days ago, MessageContent intent already on). Controlled boot: gateway up as `Magpie#8183`, 2 commands registered, no allowlist warning. Enqueued a real hunt directly into the queue (MX Master 3S ≤ $70): worker claimed it, live eBay search extracted **60/60 rows**, top-5 posted as embeds, row `done` at **16¢** — landed costs $37.79–$39.98, verdicts sharp (flagged a Mac-specific variant and a vague listing). SIGTERM drained cleanly in order (`worker.stopped → gateway.stopped → shutdown.done`; the `bun run` wrapper reports exit 144 on signal — cosmetic).
+- **Cost profile:** extraction output tokens dominate hard — $0.118 of the $0.157 total was `extractListings` on Sonnet (10k output tokens for 60 rows). At 16¢/hunt a single daily watch is ~$5/mo; fine, but running extraction on Haiku is now clearly the first lever when Phase 2 multiplies hunt volume.
+
+**Open / next:** owner-side receive-path check (`/hunt` + `/advise` typed in Discord — process left running); then PR. Phase 2 groundwork (scheduler/dedup) as stretch.
 
 ### [[07-15-26 Wed]] — M4 worker + Discord surface underway (M5)
 
