@@ -64,3 +64,13 @@ export function buildNothingFoundEmbed(target: TargetSpec): EmbedBuilder {
 export function buildResultsHeader(target: TargetSpec, shownCount: number, extractedCount: number): string {
   return `**Magpie** · top ${shownCount} of ${extractedCount} for "${target.description}"`;
 }
+
+const ERROR_COLOR = 0xe74c3c;
+
+/** SPEC §3.1: a hunt that fails mid-run reports the reason, never silently dies. */
+export function buildErrorEmbed(query: string, reason: string): EmbedBuilder {
+  return new EmbedBuilder()
+    .setTitle('Hunt failed')
+    .setDescription(`The hunt for **${query}** failed:\n${truncate(reason, 1000)}`)
+    .setColor(ERROR_COLOR);
+}
