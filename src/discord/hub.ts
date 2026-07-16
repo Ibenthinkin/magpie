@@ -19,6 +19,8 @@ export interface Hub {
   allowlistEmpty: boolean;
   /** null = allowed; otherwise why the interaction must be ignored. */
   permits(i: { channelId: string | null; userId: string }): HubDenial | null;
+  /** Allowlist-only check, for interactions on our own messages in threads (buttons). */
+  permitsUser(userId: string): boolean;
 }
 
 export function makeHub(cfg: HubConfig): Hub {
@@ -31,6 +33,9 @@ export function makeHub(cfg: HubConfig): Hub {
       if (i.channelId !== cfg.channelId) return 'wrong_channel';
       if (!allowed.has(i.userId)) return 'user_not_allowed';
       return null;
+    },
+    permitsUser(userId) {
+      return allowed.has(userId);
     },
   };
 }
