@@ -2,6 +2,7 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type SlashCommandOptionsOnlyBuilder,
 } from 'discord.js';
@@ -19,11 +20,18 @@ export interface GatewayCommand {
   execute: (interaction: ChatInputCommandInteraction) => Promise<unknown>;
 }
 
+export interface GatewayButtonRoute {
+  /** customId prefix, e.g. "advise:". */
+  prefix: string;
+  execute: (interaction: ButtonInteraction) => Promise<unknown>;
+}
+
 export interface GatewayDeps {
   token: string;
   guildId: string;
   hub: Hub;
   commands: GatewayCommand[];
+  buttons?: GatewayButtonRoute[];
 }
 
 export interface Gateway {
@@ -32,10 +40,26 @@ export interface Gateway {
 }
 
 export async function startGateway(deps: GatewayDeps): Promise<Gateway> {
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  // GuildMessages + MessageContent (privileged; enable in the dev portal) are
+  // needed to read the user's replies inside advisor threads.
+  const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  });
   const byName = new Map(deps.commands.map((c) => [c.data.name, c]));
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    // Buttons live on our own messages (advisor threads), so channel binding is
+    // implicit; the allowlist still gates who can click.
+    if (interaction.isButton()) {
+      if (!deps.hub.permitsUser(interaction.user.id)) {
+        log('gateway.ignored', { reason: 'user_not_allowed', user: interaction.user.id, button: interaction.customId });
+        return;
+      }
+      const route = deps.buttons?.find((b) => interaction.customId.startsWith(b.prefix));
+      if (!route) return;
+      await route.execute(interaction).catch((err) => logError('gateway.button', err, { id: interaction.customId }));
+      return;
+    }
     if (!interaction.isChatInputCommand()) return;
     const denial = deps.hub.permits({ channelId: interaction.channelId, userId: interaction.user.id });
     if (denial) {

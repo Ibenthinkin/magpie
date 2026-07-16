@@ -4,7 +4,14 @@ import { loadConfig } from './config';
 import { getDb } from './db/client';
 import { makeHuntsRepo } from './db/hunts';
 import { makeListingsRepo } from './db/listings';
+import {
+  adviseCommandData,
+  handleAdviseButton,
+  handleAdviseCommand,
+  realAdvisePort,
+} from './discord/commands/advise';
 import { handleHuntCommand, huntCommandData } from './discord/commands/hunt';
+import { adviseTurn } from './engine/advisor';
 import { startGateway } from './discord/gateway';
 import { makeHub } from './discord/hub';
 import { makeDiscordReporter } from './discord/report';
@@ -39,6 +46,17 @@ async function main(): Promise<void> {
     hub,
     commands: [
       { data: huntCommandData, execute: (i) => handleHuntCommand(i, { parseTarget, hunts }) },
+      { data: adviseCommandData, execute: (i) => handleAdviseCommand(realAdvisePort(i), { adviseTurn, hunts }) },
+    ],
+    buttons: [
+      {
+        prefix: 'advise:',
+        execute: (i) =>
+          handleAdviseButton(
+            { customId: i.customId, channelId: i.channelId, reply: (content) => i.reply(content) },
+            { hunts },
+          ),
+      },
     ],
   });
 

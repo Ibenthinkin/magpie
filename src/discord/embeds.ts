@@ -1,4 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
+import type { AdvisorCandidate } from '../engine/advisor';
 import type { RankedListing } from '../engine/rank';
 import type { TargetSpec } from '../engine/target';
 
@@ -66,6 +67,20 @@ export function buildResultsHeader(target: TargetSpec, shownCount: number, extra
 }
 
 const ERROR_COLOR = 0xe74c3c;
+const CANDIDATE_COLOR = 0x3498db;
+
+/** Advisor candidate card (SPEC §3.2): name, pros/cons, the concretized search target. */
+export function buildCandidateEmbed(c: AdvisorCandidate, index: number): EmbedBuilder {
+  const bullets = (items: string[]) => items.map((s) => `• ${s}`).join('\n') || '—';
+  return new EmbedBuilder()
+    .setTitle(truncate(`${index + 1}. ${c.name}`, TITLE_LIMIT))
+    .setDescription(`Search target: *${c.target.description}*`)
+    .addFields(
+      { name: 'Pros', value: truncate(bullets(c.pros), 1024), inline: true },
+      { name: 'Cons', value: truncate(bullets(c.cons), 1024), inline: true },
+    )
+    .setColor(CANDIDATE_COLOR);
+}
 
 /** SPEC §3.1: a hunt that fails mid-run reports the reason, never silently dies. */
 export function buildErrorEmbed(query: string, reason: string): EmbedBuilder {

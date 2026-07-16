@@ -34,3 +34,17 @@ describe('makeHub().permits', () => {
     expect(makeHub(cfg).name).toBe('Magpie');
   });
 });
+
+describe('makeHub().permitsUser', () => {
+  // Buttons live on messages WE posted inside advisor threads, so channel
+  // binding is implicit there — but the allowlist still applies.
+  it('allows allowlisted users and denies others', () => {
+    const hub = makeHub(cfg);
+    expect(hub.permitsUser('user-1')).toBe(true);
+    expect(hub.permitsUser('intruder')).toBe(false);
+  });
+
+  it('empty allowlist denies everyone', () => {
+    expect(makeHub({ ...cfg, allowedUserIds: [] }).permitsUser('user-1')).toBe(false);
+  });
+});
