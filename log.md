@@ -23,7 +23,9 @@ messages. `/brief` reads this. Newest on top.
 **M8 live smoke (later the same day)** — both gates were already clear (allowlist filled days ago, MessageContent intent already on). Controlled boot: gateway up as `Magpie#8183`, 2 commands registered, no allowlist warning. Enqueued a real hunt directly into the queue (MX Master 3S ≤ $70): worker claimed it, live eBay search extracted **60/60 rows**, top-5 posted as embeds, row `done` at **16¢** — landed costs $37.79–$39.98, verdicts sharp (flagged a Mac-specific variant and a vague listing). SIGTERM drained cleanly in order (`worker.stopped → gateway.stopped → shutdown.done`; the `bun run` wrapper reports exit 144 on signal — cosmetic).
 - **Cost profile:** extraction output tokens dominate hard — $0.118 of the $0.157 total was `extractListings` on Sonnet (10k output tokens for 60 rows). At 16¢/hunt a single daily watch is ~$5/mo; fine, but running extraction on Haiku is now clearly the first lever when Phase 2 multiplies hunt volume.
 
-**Open / next:** owner-side receive-path check (`/hunt` + `/advise` typed in Discord — process left running); then PR. Phase 2 groundwork (scheduler/dedup) as stretch.
+**Receive path verified by owner** — real `/hunt` and `/advise` typed in Discord against the running process; results judged good. That closes M8 and with it the Phase 1 exit criteria (SPEC §14): `/hunt` + `/advise` end-to-end, suite green (80 vitest + 15 bun), live eBay smoke passed. Branch merged to main.
+
+**Open / next:** Phase 2 — watch scheduler (croner tick, ±10% jitter), dedup (`watch_hit`), `/watch` commands. First cost lever when volume grows: extraction on Haiku. Also worth a SPEC §13 amendment (`test:e2e` runs under `bun test`, not `@playwright/test`) and a system-map artifact refresh at this phase boundary.
 
 ### [[07-15-26 Wed]] — M4 worker + Discord surface underway (M5)
 
