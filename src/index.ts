@@ -20,6 +20,7 @@ import { runHunt } from './engine/hunt';
 import { parseTarget } from './engine/target';
 import { log, logError } from './log';
 import { resolveAdapters } from './sources/registry';
+import { startScheduler } from './watch/scheduler';
 import { startWorker } from './watch/worker';
 
 // Composition root: the one long-lived Bun process hosting the Discord
@@ -77,6 +78,10 @@ async function main(): Promise<void> {
         pace,
       }),
   });
+
+  // Watch scheduler: every-minute tick enqueues watch_run hunts into the same
+  // queue the worker drains (SPEC §2.1). Mode B is mode A on a timer + dedup.
+  const scheduler = startScheduler({ watches, hunts });
   log('boot.ready', { db: config.dbPath, headless: config.headless });
 
   let shuttingDown = false;
@@ -85,6 +90,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     log('shutdown.begin', { signal });
     try {
+      scheduler.stop(); // stop enqueuing new watch runs first
       await worker.stop(); // waits for any in-flight hunt
       await gateway.stop();
       await closeContext();
