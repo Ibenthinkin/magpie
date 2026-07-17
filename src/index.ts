@@ -4,6 +4,7 @@ import { loadConfig } from './config';
 import { getDb } from './db/client';
 import { makeHuntsRepo } from './db/hunts';
 import { makeListingsRepo } from './db/listings';
+import { makeWatchesRepo } from './db/watches';
 import {
   adviseCommandData,
   handleAdviseButton,
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
   const db = getDb(config.dbPath);
   const hunts = makeHuntsRepo(db);
   const listings = makeListingsRepo(db);
+  const watches = makeWatchesRepo(db);
   const stale = hunts.resetStaleRunning();
   if (stale > 0) log('boot.resetStaleRunning', { count: stale });
 
@@ -70,6 +72,7 @@ async function main(): Promise<void> {
         getPage: async () => (await getContext()).newPage(),
         hunts,
         listings,
+        watches,
         reporter,
         pace,
       }),

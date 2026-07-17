@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { makePacer } from '../../../src/browser/pacing';
 import { makeHuntsRepo } from '../../../src/db/hunts';
 import { makeListingsRepo } from '../../../src/db/listings';
+import { makeWatchesRepo } from '../../../src/db/watches';
 import type { HuntRow } from '../../../src/db/types';
 import { runHunt, type Reporter } from '../../../src/engine/hunt';
 import { setGenerateForTests } from '../../../src/engine/llm';
@@ -54,6 +55,7 @@ function makePipeline(baseUrl: string) {
   const db = openTestDb();
   const hunts = makeHuntsRepo(db);
   const listings = makeListingsRepo(db);
+  const watches = makeWatchesRepo(db);
 
   const reported: { hunt: HuntRow; ranked: RankedListing[]; extractedCount: number }[] = [];
   const errored: { hunt: HuntRow; message: string }[] = [];
@@ -78,6 +80,7 @@ function makePipeline(baseUrl: string) {
         getPage: () => browser.newPage(),
         hunts,
         listings,
+        watches,
         reporter,
         pace: makePacer(),
       }),

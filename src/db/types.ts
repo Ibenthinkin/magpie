@@ -45,3 +45,30 @@ export interface ListingsRepo {
   resultsForHunt(huntId: string): HuntResultRow[];
   countListings(): number;
 }
+
+export interface CreateWatchInput {
+  name: string;
+  targetJson: string;
+  cadenceMinutes: number;
+  channelId: string;
+  /** First due time; pass "now" for an immediate first run. */
+  nextRunAt: string;
+}
+
+export type WatchStatus = WatchRow['status'];
+
+export interface WatchesRepo {
+  createWatch(input: CreateWatchInput): WatchRow;
+  getWatch(id: string): WatchRow | null;
+  /** Active + paused, never removed (soft delete keeps history). */
+  listWatches(): WatchRow[];
+  /** Active watches whose nextRunAt ≤ now, oldest due first. */
+  dueWatches(nowIso: string): WatchRow[];
+  bumpNextRun(id: string, patch: { nextRunAt: string; lastRunAt: string }): void;
+  setStatus(id: string, status: WatchStatus): void;
+  /** Dedup primitive: of these listing ids, the ones with no watch_hit for this watch. */
+  unseenListingIds(watchId: string, listingIds: string[]): string[];
+  /** Record hits (notify-at-most-once marker) for this watch. */
+  insertHits(watchId: string, listingIds: string[], notifiedAt: string): void;
+  countHits(watchId: string): number;
+}
