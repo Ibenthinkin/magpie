@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     ],
   });
 
-  const reporter = makeDiscordReporter(gateway.send);
+  const reporter = makeDiscordReporter(gateway.send, { watches });
   const pace = makePacer();
   const worker = startWorker({
     hunts,
