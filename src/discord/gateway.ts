@@ -5,6 +5,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type SlashCommandOptionsOnlyBuilder,
+  type SlashCommandSubcommandsOnlyBuilder,
 } from 'discord.js';
 import { log, logError } from '../log';
 import type { Hub } from './hub';
@@ -16,7 +17,7 @@ import type { ChannelSend } from './report';
 // commands/* where vitest can reach it; this file stays dumb.
 
 export interface GatewayCommand {
-  data: SlashCommandOptionsOnlyBuilder;
+  data: SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder;
   execute: (interaction: ChatInputCommandInteraction) => Promise<unknown>;
 }
 

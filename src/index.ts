@@ -12,6 +12,7 @@ import {
   realAdvisePort,
 } from './discord/commands/advise';
 import { handleHuntCommand, huntCommandData } from './discord/commands/hunt';
+import { handleWatchCommand, watchCommandData } from './discord/commands/watch';
 import { adviseTurn } from './engine/advisor';
 import { startGateway } from './discord/gateway';
 import { makeHub } from './discord/hub';
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
     hub,
     commands: [
       { data: huntCommandData, execute: (i) => handleHuntCommand(i, { parseTarget, hunts }) },
+      { data: watchCommandData, execute: (i) => handleWatchCommand(i, { parseTarget, watches, hunts }) },
       { data: adviseCommandData, execute: (i) => handleAdviseCommand(realAdvisePort(i), { adviseTurn, hunts }) },
     ],
     buttons: [
