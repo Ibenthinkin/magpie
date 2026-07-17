@@ -5,6 +5,18 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-17-26 Fri]] — Phase 2 begins: watches repo, engine dedup, watch-hit reporting
+
+**Shipped** (branch `phase-2-watchlists`; Phase 1 merged to main via PR #4 — rebase-merge, the repo disallows merge commits):
+- **Watches repo** (`src/db/watches.ts`, real-sqlite bun tests): `dueWatches(now)` (active + `next_run_at ≤ now`), `bumpNextRun`, soft lifecycle (`removed` keeps history, hidden from list), and the dedup primitives — `unseenListingIds(watchId, ids)` + `insertHits` (the at-most-once markers) + `countHits` for `/watch list`.
+- **Engine step 6** — `runHunt` now takes a `watches` dep; on `watch_run` hunts the *report* is filtered to unseen listings while `hunt_result` keeps the full ranked history. Hits are marked **after** a successful report, mirroring the Phase 1 reporter rule: a failed Discord post must not suppress a future notification (at-least-once).
+- **Watch-hit reporting** — watch runs render as ONE batched message prefixed with the watch name (`🔔 **name** — N new`); zero new hits is total silence, not a nothing-found card (daily nothing-pings would be spam). Oneshot behavior unchanged.
+
+**Decisions:**
+- Jitter math will live in the scheduler (injectable random), not the repo — `bumpNextRun` takes explicit timestamps and stays deterministic.
+
+**Open / next:** scheduler (croner 60s tick → enqueue `watch_run` + bump with ±10% jitter) → `/watch` command family (add parses target and enqueues an immediate first run carrying the parse cost, since watch rows don't hold cost) → index wiring → watch-lifecycle e2e (second run notifies nothing new) → PR.
+
 ### [[07-16-26 Thu]] — M5–M7 land: full Discord surface, /advise, offline e2e
 
 **Shipped** (continuing on `phase-1-scaffold`; vitest 80 + bun 15, all green, typecheck clean):
