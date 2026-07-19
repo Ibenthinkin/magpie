@@ -45,9 +45,13 @@ export function landedCost(l: CostableListing, facts: ProfileFactRow[] = []): nu
 
 export interface RankedListing extends RawListing {
   landedCents: number;
+  /** Deterministic membership/coupon discount already inside landedCents (0 = none). */
+  discountCents: number;
   matchesTarget: boolean;
   verdict: string;
 }
+
+type RankInput = RawListing & { source?: string };
 
 // Pass 1: cheap relevance triage over ALL rows — a bool per listing, no prose. Judging the
 // whole set (not just the cheapest slice) means fairly-priced real units get assessed instead
@@ -88,34 +92,47 @@ const VERDICT_SYSTEM = [
   'You are a savvy shopping assistant. For each listing give ONE concise sentence judging fit',
   'and value vs the target. Cite only the fields shown (title, landed price, condition) — never',
   'invent details. Be direct: flag anything off about fit or price, and call out standout deals.',
+  'When a membership or coupon discount changed a landed price, say so.',
 ].join(' ');
 
-const listingLine = (l: RawListing, i: number) =>
-  `${i}. ${l.title} — $${(landedCost(l) / 100).toFixed(2)} landed, condition: ${l.condition ?? 'unknown'}`;
+const factsBlock = (facts: ProfileFactRow[]) =>
+  facts.length === 0
+    ? ''
+    : `\n\nShopper profile facts:\n${facts.map((f) => `- [${f.category}] ${f.label}: ${f.value}`).join('\n')}`;
 
-const targetPrompt = (target: TargetSpec, lines: string) =>
-  `Target: ${target.description}\nConstraints: ${JSON.stringify(target.constraints)}\n\nListings:\n${lines}`;
+const listingLine = (l: RankInput, i: number, facts: ProfileFactRow[]) => {
+  const off = discountCents(l, facts);
+  const discount = off > 0 ? ` (after $${(off / 100).toFixed(2)} membership/coupon discount)` : '';
+  return `${i}. ${l.title} — $${(landedCost(l, facts) / 100).toFixed(2)} landed${discount}, condition: ${l.condition ?? 'unknown'}`;
+};
+
+const targetPrompt = (target: TargetSpec, lines: string, facts: ProfileFactRow[]) =>
+  `Target: ${target.description}\nConstraints: ${JSON.stringify(target.constraints)}${factsBlock(facts)}\n\nListings:\n${lines}`;
 
 /**
  * Two-pass rank. Pass 1: cheap matchesTarget triage over every extracted row. Sort matchesTarget
  * desc → landedCost asc and cut to the top-N. Pass 2: prose verdicts for just those finalists.
  * Keeps real units ahead of cheap accessories regardless of where they fall in the price order.
  */
-export async function rankListings(listings: RawListing[], target: TargetSpec): Promise<RankedListing[]> {
+export async function rankListings(
+  listings: RankInput[],
+  target: TargetSpec,
+  facts: ProfileFactRow[] = [],
+): Promise<RankedListing[]> {
   if (listings.length === 0) return [];
-  const sorted = [...listings].sort((a, b) => landedCost(a) - landedCost(b));
+  const sorted = [...listings].sort((a, b) => landedCost(a, facts) - landedCost(b, facts));
 
   // Pass 1 — relevance triage over all rows.
   const { matches } = await genObject({
     label: 'rankMatch',
     schema: matchesSchema,
     system: MATCH_SYSTEM,
-    prompt: targetPrompt(target, sorted.map(listingLine).join('\n')),
+    prompt: targetPrompt(target, sorted.map((l, i) => listingLine(l, i, facts)).join('\n'), facts),
   });
   const matchByIndex = new Map(matches.map((m) => [m.index, m.matchesTarget]));
 
   const finalists = sorted
-    .map((l, i) => ({ l, matchesTarget: matchByIndex.get(i) ?? false, landedCents: landedCost(l) }))
+    .map((l, i) => ({ l, matchesTarget: matchByIndex.get(i) ?? false, landedCents: landedCost(l, facts) }))
     // matchesTarget desc → landedCost asc (sorted is already landed-cost ascending).
     .sort((a, b) =>
       a.matchesTarget !== b.matchesTarget ? (a.matchesTarget ? -1 : 1) : a.landedCents - b.landedCents,
@@ -127,13 +144,14 @@ export async function rankListings(listings: RawListing[], target: TargetSpec): 
     label: 'rankVerdicts',
     schema: verdictsSchema,
     system: VERDICT_SYSTEM,
-    prompt: targetPrompt(target, finalists.map((f, i) => listingLine(f.l, i)).join('\n')),
+    prompt: targetPrompt(target, finalists.map((f, i) => listingLine(f.l, i, facts)).join('\n'), facts),
   });
   const verdictByIndex = new Map(verdicts.map((v) => [v.index, v.verdict]));
 
   return finalists.map((f, i) => ({
     ...f.l,
     landedCents: f.landedCents,
+    discountCents: discountCents(f.l, facts),
     matchesTarget: f.matchesTarget,
     verdict: verdictByIndex.get(i) ?? '(no verdict)',
   }));

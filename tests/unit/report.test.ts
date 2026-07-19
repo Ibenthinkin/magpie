@@ -35,6 +35,7 @@ const ranked = (n: number): RankedListing => ({
   condition: 'New',
   url: `https://example.com/item/${n}`,
   landedCents: n * 1000,
+  discountCents: 0,
   matchesTarget: true,
   verdict: `verdict ${n}`,
 });

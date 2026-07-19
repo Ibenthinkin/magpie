@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ProfileFactRow } from '../../src/db/types';
-import { discountCents, landedCost } from '../../src/engine/rank';
+import { setGenerateForTests } from '../../src/engine/llm';
+import { discountCents, landedCost, rankListings } from '../../src/engine/rank';
+import type { RawListing } from '../../src/sources/types';
 
 const fact = (over: Partial<ProfileFactRow> = {}): ProfileFactRow => ({
   id: 'f1',
@@ -58,5 +60,69 @@ describe('landedCost + discountCents (deterministic best-deal math)', () => {
 
   it('source matching is case-insensitive', () => {
     expect(landedCost(l, [fact({ value: '10% off eBay' })])).toBe(9_500);
+  });
+});
+
+// --- rankListings with facts (LLM seamed) ----------------------------------
+
+afterEach(() => setGenerateForTests(null));
+
+/** Same seam shape as hunt.test.ts: everything matches, verdict per index. */
+function fakeRank(captured?: { prompts: string[]; systems: string[] }) {
+  setGenerateForTests(({ label, prompt, system }) => {
+    captured?.prompts.push(prompt);
+    captured?.systems.push(system ?? '');
+    const idx = [...prompt.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+    const usage = { inputTokens: 100, outputTokens: 20 };
+    if (label === 'rankMatch') {
+      return { object: { matches: idx.map((index) => ({ index, matchesTarget: true })) }, usage, costUsd: 0.01 };
+    }
+    if (label === 'rankVerdicts') {
+      return { object: { verdicts: idx.map((index) => ({ index, verdict: `v${index}` })) }, usage, costUsd: 0.01 };
+    }
+    throw new Error(`unexpected llm call: ${label}`);
+  });
+}
+
+const listing = (title: string, priceCents: number, source = 'ebay'): RawListing & { source?: string } => ({
+  title,
+  priceCents,
+  shippingCents: null,
+  condition: 'New',
+  url: `https://example.com/${title}`,
+  source,
+});
+
+describe('rankListings with profile facts', () => {
+  const target = { description: 'widget', constraints: {} };
+
+  it('sorts by DISCOUNTED landed cost and reports discountCents', async () => {
+    fakeRank();
+    // B is cheaper only after its 10% ebay coupon: A (amazon) = 1000, B (ebay) = 1050 → 945.
+    const ranked = await rankListings([listing('A', 1000, 'amazon'), listing('B', 1050)], target, [fact()]);
+    expect(ranked.map((r) => r.title)).toEqual(['B', 'A']);
+    expect(ranked[0]!.landedCents).toBe(945);
+    expect(ranked[0]!.discountCents).toBe(105);
+    expect(ranked[1]!.discountCents).toBe(0);
+  });
+
+  it('facts appear in both prompts; discounted lines are annotated', async () => {
+    const captured = { prompts: [] as string[], systems: [] as string[] };
+    fakeRank(captured);
+    await rankListings([listing('A', 1000)], target, [fact()]);
+    expect(captured.prompts).toHaveLength(2);
+    for (const p of captured.prompts) {
+      expect(p).toContain('Shopper profile facts:');
+      expect(p).toContain('[coupon_source] eBay coupon: 10% off ebay');
+      expect(p).toContain('membership/coupon discount');
+    }
+  });
+
+  it('no facts: prompts carry no facts block and discountCents is 0', async () => {
+    const captured = { prompts: [] as string[], systems: [] as string[] };
+    fakeRank(captured);
+    const ranked = await rankListings([listing('A', 1000)], target);
+    expect(ranked[0]!.discountCents).toBe(0);
+    expect(captured.prompts.every((p) => !p.includes('Shopper profile facts'))).toBe(true);
   });
 });
