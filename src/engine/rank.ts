@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ProfileFactRow } from '../db/types';
 import { genObject } from './llm';
 import type { RawListing } from '../sources/types';
 import type { TargetSpec } from './target';
@@ -6,10 +7,40 @@ import type { TargetSpec } from './target';
 // Ranking = deterministic math first, LLM second. `landedCost` is pure and
 // unit-testable; the verdict pass is a thin judgment layer on top. SPEC §6.5.
 
-// Landed cost in cents: price + shipping. Membership/coupon discounts and profile
-// facts arrive in Phase 3; for now there are none to apply.
-export function landedCost(l: Pick<RawListing, 'priceCents' | 'shippingCents'>): number {
-  return l.priceCents + (l.shippingCents ?? 0);
+/** What the deterministic cost math needs; `source` scopes discount facts. */
+export type CostableListing = Pick<RawListing, 'priceCents' | 'shippingCents'> & { source?: string };
+
+// Phase 3 best-deal rule (SPEC §15 "definition depth", scoped here): a
+// membership/coupon fact is machine-applied ONLY when its text names the
+// listing's source — "10% off ebay" discounts eBay rows, nothing else. Percent
+// applies to the item price, "$N off" to the landed total, percent wins if a
+// fact has both, applicable facts stack. Anything fuzzier stays LLM-verdict
+// context: the model narrates deals, it never invents math.
+const PERCENT_OFF = /(\d+(?:\.\d+)?)\s*%\s*off/i;
+const DOLLARS_OFF = /\$\s*(\d+(?:\.\d+)?)\s*off/i;
+
+export function discountCents(l: CostableListing, facts: ProfileFactRow[]): number {
+  if (!l.source) return 0;
+  const source = l.source.toLowerCase();
+  let total = 0;
+  for (const f of facts) {
+    if (f.category !== 'membership' && f.category !== 'coupon_source') continue;
+    if (!`${f.label} ${f.value}`.toLowerCase().includes(source)) continue;
+    const pct = f.value.match(PERCENT_OFF);
+    if (pct) {
+      total += Math.round((l.priceCents * Number(pct[1])) / 100);
+      continue;
+    }
+    const usd = f.value.match(DOLLARS_OFF);
+    if (usd) total += Math.round(Number(usd[1]) * 100);
+  }
+  return total;
+}
+
+// Landed cost in cents: price + shipping − deterministic membership/coupon
+// discounts (Phase 3).
+export function landedCost(l: CostableListing, facts: ProfileFactRow[] = []): number {
+  return Math.max(0, l.priceCents + (l.shippingCents ?? 0) - discountCents(l, facts));
 }
 
 export interface RankedListing extends RawListing {
