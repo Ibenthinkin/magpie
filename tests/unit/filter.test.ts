@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ProfileFactRow } from '../../src/db/types';
 import { applyConstraints } from '../../src/engine/filter';
 import type { RawListing } from '../../src/sources/types';
 import type { TargetSpec } from '../../src/engine/target';
@@ -59,5 +60,22 @@ describe('applyConstraints', () => {
     const refurb = raw({ condition: 'Seller refurbished' });
     const kept = applyConstraints([used, refurb], target({ conditions: ['used', 'refurbished'] }));
     expect(kept).toEqual([used, refurb]);
+  });
+
+  it('price ceiling applies AFTER deterministic discounts (price-after-coupons)', () => {
+    const facts: ProfileFactRow[] = [
+      {
+        id: 'f1',
+        category: 'coupon_source',
+        label: 'c',
+        value: '10% off ebay',
+        active: 1,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ];
+    const over = { ...raw({ priceCents: 10_500 }), source: 'ebay' };
+    expect(applyConstraints([over], target({ maxPriceCents: 10_000 }))).toEqual([]); // undiscounted: over ceiling
+    expect(applyConstraints([over], target({ maxPriceCents: 10_000 }), facts)).toEqual([over]); // 9450 after coupon
   });
 });
