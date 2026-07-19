@@ -23,6 +23,7 @@ const huntRow = (over: Partial<HuntRow> = {}): HuntRow =>
     startedAt: null,
     finishedAt: null,
     createdAt: '',
+    ...over,
   }) as HuntRow;
 
 const target = { description: 'widget 3000', constraints: {} };
@@ -81,5 +82,25 @@ describe('makeDiscordReporter', () => {
       throw new Error('discord 403');
     });
     await expect(reporter.results(huntRow(), target, [ranked(1)], 1)).rejects.toThrow('discord 403');
+  });
+
+  describe('watch runs (SPEC §3.3, §7.2)', () => {
+    const watchHunt = huntRow({ mode: 'watch_run', watchId: 'w1' } as Partial<HuntRow>);
+    const watches = { getWatch: (id: string) => (id === 'w1' ? ({ name: 'hdd deals' } as never) : null) };
+
+    it('new hits go out as ONE batched message prefixed with the watch name', async () => {
+      const { sent, send } = capture();
+      await makeDiscordReporter(send, { watches }).results(watchHunt, target, [ranked(1), ranked(2)], 9);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.message.content).toContain('hdd deals');
+      expect(sent[0]!.message.content).toContain('2');
+      expect(sent[0]!.message.embeds).toHaveLength(2);
+    });
+
+    it('nothing new = complete silence, NOT a nothing-found card', async () => {
+      const { sent, send } = capture();
+      await makeDiscordReporter(send, { watches }).results(watchHunt, target, [], 9);
+      expect(sent).toEqual([]);
+    });
   });
 });

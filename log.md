@@ -5,6 +5,33 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-18-26 Sat]] — Phase 2 live smoke of `/watch` against Discord — passed
+
+**Findings** (live boot as `Magpie#8183`, 3 commands registered incl. the subcommand-built `/watch`; two Casio watches added during the run):
+- **Full `/watch` surface verified live.** `add` (immediate first run — real `ChatInputCommandInteraction` satisfies `WatchInteractionPort`), `list`, `pause`/`resume`/`remove` (removed watch disappears from `list`, history kept).
+- **Dedup silence proven through the real scheduler**, not just `runSchedulerTick`: backdated a watch's `next_run_at` → the live croner tick logged `[scheduler.tick] enqueued=1`, worker ran it, `extractListings kept 3/3` → `[hunt.done] … shown=0` (no card posted). Ledger confirms: hit count stayed 4 (no new markers), `hunt_result` retained the full 3-row set, `next_run_at` bumped ~57min out (±10% jitter applied), `last_run_at` set. The "keep full history, filter the notification" invariant holds end-to-end.
+- **Fail-loud, one source** — a Casio query hit an eBay interstitial (`no result cards found … site drift or interstitial?`); that hunt alone went `watch_run`/`failed` with 0 hits while the process continued. Worth watching as watch volume grows — eBay occasionally serves an interstitial.
+- **Clean graceful shutdown** — SIGTERM drained in order: `shutdown.begin → worker.stopped → gateway.stopped → shutdown.done` (scheduler.stop() runs silently first; worker drains before the gateway drops).
+
+**Gotcha:** `bun run src/index.ts` spawns **two** pids — a `bun run` wrapper and the real child holding the SIGTERM handler. Killing the wrapper (`pgrep … | head -1`) reports exit 144 but leaves the actual gateway **orphaned and alive**; graceful shutdown must signal the *child* running `index.ts`. Extends the M8 "`bun run` is never env-isolated" note.
+
+**Open / next:** merge `phase-2-watchlists` → main. Regular **merge commit** — corrected the long-standing "repo disallows merge commits → rebase-merge" note: GitHub actually allows all three merge types (`mergeCommitAllowed: true`), and it's a single-user project, so a plain merge commit is the norm going forward.
+
+### [[07-17-26 Fri]] — Phase 2 begins: watches repo, engine dedup, watch-hit reporting
+
+**Shipped** (branch `phase-2-watchlists`; Phase 1 merged to main via PR #4 — rebase-merge, the repo disallows merge commits):
+- **Watches repo** (`src/db/watches.ts`, real-sqlite bun tests): `dueWatches(now)` (active + `next_run_at ≤ now`), `bumpNextRun`, soft lifecycle (`removed` keeps history, hidden from list), and the dedup primitives — `unseenListingIds(watchId, ids)` + `insertHits` (the at-most-once markers) + `countHits` for `/watch list`.
+- **Engine step 6** — `runHunt` now takes a `watches` dep; on `watch_run` hunts the *report* is filtered to unseen listings while `hunt_result` keeps the full ranked history. Hits are marked **after** a successful report, mirroring the Phase 1 reporter rule: a failed Discord post must not suppress a future notification (at-least-once).
+- **Watch-hit reporting** — watch runs render as ONE batched message prefixed with the watch name (`🔔 **name** — N new`); zero new hits is total silence, not a nothing-found card (daily nothing-pings would be spam). Oneshot behavior unchanged.
+- **Scheduler** (`src/watch/scheduler.ts`, 7 vitest): `runSchedulerTick` (the tested core) enqueues a `watch_run` hunt per due watch into the same queue the worker drains, then bumps `next_run_at` by cadence ±10% jitter (injectable random); `startScheduler` is a thin croner `* * * * *` wrapper with the `Cron` constructor seamed and the tick wrapped so a throwing pass can't kill the job. Wired into `index.ts` — `scheduler.stop()` runs first in shutdown so no new runs enqueue while the in-flight hunt drains.
+- **`/watch` command family** (`src/discord/commands/watch.ts`, 10 vitest): subcommands `add`/`list`/`pause`/`resume`/`remove` on one handler dispatching off `getSubcommand()`. `add` parses the query (LLM cost captured via `withUsage`), applies a `max_price` override, creates an active watch (`name` = target description, cadence in **hours**, default 24), and **directly enqueues the first `watch_run` now** carrying the parse cost as `initialCostCents` — the watch's own `nextRunAt` is set one cadence out so the scheduler picks up from there (no double first-run). `list` renders a `buildWatchListEmbed` (id · name · status · cadence · last-run · hit count, one line each) or "No watches yet."; lifecycle maps sub→status via `setStatus` (soft `removed` keeps history), unknown id replies not-found. Gateway's `GatewayCommand.data` widened to accept `SlashCommandSubcommandsOnlyBuilder`; the real interaction satisfies the `WatchInteractionPort` structurally (incl. embed-capable `editReply`), so `index.ts` passes `i` straight through like `/hunt`. **Not yet live-smoked** — unit-covered end to end (real `parseTarget` through the LLM seam), Discord-side verification pending.
+
+**Decisions:**
+- Jitter math lives in the scheduler (injectable random), not the repo — `bumpNextRun` takes explicit timestamps and stays deterministic.
+- **Enqueue-then-bump ordering:** a failed enqueue leaves the watch *due* (not bumped) so the next tick retries, rather than bump-first which would silently drop a run. The duplicate-hunt risk is already absorbed by the engine's dedup, so retry is the safer failure mode. One bad watch is logged loudly and skipped, never starving the rest.
+
+**Open / next:** watch-lifecycle e2e (add → scheduler tick → run → second run notifies nothing new) → live smoke of `/watch` against Discord → PR.
+
 ### [[07-16-26 Thu]] — M5–M7 land: full Discord surface, /advise, offline e2e
 
 **Shipped** (continuing on `phase-1-scaffold`; vitest 80 + bun 15, all green, typecheck clean):

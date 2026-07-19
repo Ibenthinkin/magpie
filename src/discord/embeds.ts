@@ -1,4 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
+import type { WatchRow } from '../db/types';
 import type { AdvisorCandidate } from '../engine/advisor';
 import type { RankedListing } from '../engine/rank';
 import type { TargetSpec } from '../engine/target';
@@ -80,6 +81,31 @@ export function buildCandidateEmbed(c: AdvisorCandidate, index: number): EmbedBu
       { name: 'Cons', value: truncate(bullets(c.cons), 1024), inline: true },
     )
     .setColor(CANDIDATE_COLOR);
+}
+
+const WATCH_COLOR = 0x9b59b6;
+
+// Discord embed description hard limit.
+const DESCRIPTION_LIMIT = 4096;
+
+/** Whole-minute cadence rendered as hours when it divides evenly, else minutes. */
+function cadenceLabel(minutes: number): string {
+  return minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
+}
+
+/** SPEC §3.3: `/watch list` — one line per watch (id, name, status, cadence, last run, hits). */
+export function buildWatchListEmbed(rows: { watch: WatchRow; hits: number }[]): EmbedBuilder {
+  const line = ({ watch, hits }: { watch: WatchRow; hits: number }) => {
+    const flag = watch.status === 'active' ? '' : ` [${watch.status}]`;
+    const last = watch.lastRunAt ? `last ${watch.lastRunAt.slice(0, 10)}` : 'never run';
+    const s = hits === 1 ? '' : 's';
+    return `\`${watch.id}\` **${truncate(watch.name, 80)}**${flag} · every ${cadenceLabel(watch.cadenceMinutes)} · ${last} · ${hits} hit${s}`;
+  };
+  return new EmbedBuilder()
+    .setTitle('Watches')
+    .setDescription(truncate(rows.map(line).join('\n'), DESCRIPTION_LIMIT))
+    .setColor(WATCH_COLOR)
+    .setFooter({ text: `${rows.length} watch${rows.length === 1 ? '' : 'es'}` });
 }
 
 /** SPEC §3.1: a hunt that fails mid-run reports the reason, never silently dies. */

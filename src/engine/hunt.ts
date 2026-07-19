@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { Pacer } from '../browser/pacing';
-import type { HuntRow, HuntsRepo, ListingsRepo, NewHuntResult } from '../db/types';
+import type { HuntRow, HuntsRepo, ListingsRepo, NewHuntResult, WatchesRepo } from '../db/types';
 import { log, logError } from '../log';
 import type { RawListing, SourceAdapter } from '../sources/types';
 import { applyConstraints } from './filter';
@@ -9,9 +9,9 @@ import { rankListings, type RankedListing } from './rank';
 import { targetSpecSchema, type TargetSpec } from './target';
 
 // The hunt engine: one hunt end to end per SPEC §8. All three user modes
-// funnel through here. Step 6 (watch dedup) lands with Phase 2; a oneshot run
-// covers steps 1–5 and 7. runHunt never throws — every failure path ends in
-// failHunt + an error report so the worker loop stays alive.
+// funnel through here; watch_run mode adds step 6 (dedup — notify each
+// listing at most once, ever). runHunt never throws — every failure path ends
+// in failHunt + an error report so the worker loop stays alive.
 
 // The port the engine reports through; src/discord/report.ts implements it.
 // Empty `ranked` means "hunt ran, nothing matched" — the reporter renders the
@@ -28,8 +28,10 @@ export interface HuntDeps {
   getPage: () => Promise<Page>;
   hunts: HuntsRepo;
   listings: ListingsRepo;
+  watches: Pick<WatchesRepo, 'unseenListingIds' | 'insertHits'>;
   reporter: Reporter;
   pace: Pacer;
+  now?: () => string;
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -98,11 +100,35 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
       });
       deps.listings.insertHuntResults(huntRow.id, resultRows);
 
+      // 6. Dedup (watch runs only): drop listings this watch has already hit.
+      // hunt_result above keeps the full ranked history; only the report is
+      // filtered.
+      let shown = ranked;
+      const isWatchRun = huntRow.mode === 'watch_run' && huntRow.watchId !== null;
+      if (isWatchRun) {
+        const rankedIds = ranked.map((r) => idByUrl.get(r.url)).filter((id): id is string => id !== undefined);
+        const unseen = new Set(deps.watches.unseenListingIds(huntRow.watchId!, rankedIds));
+        shown = ranked.filter((r) => {
+          const id = idByUrl.get(r.url);
+          return id !== undefined && unseen.has(id);
+        });
+      }
+
       // 7. Report, then done. A reporter throw falls through to failHunt — results
-      // the user never saw must not be marked delivered.
-      await deps.reporter.results(huntRow, target, ranked, collected.length);
+      // the user never saw must not be marked delivered. Hits are marked AFTER
+      // the report for the same reason: a failed post leaves the listing
+      // eligible next run (at-least-once notification).
+      await deps.reporter.results(huntRow, target, shown, collected.length);
+      if (isWatchRun && shown.length > 0) {
+        const nowIso = (deps.now ?? (() => new Date().toISOString()))();
+        deps.watches.insertHits(
+          huntRow.watchId!,
+          shown.map((r) => idByUrl.get(r.url)!),
+          nowIso,
+        );
+      }
       deps.hunts.completeHunt(huntRow.id, { addCostCents: usage().costCents });
-      log('hunt.done', { hunt: huntRow.id, extracted: collected.length, shown: ranked.length });
+      log('hunt.done', { hunt: huntRow.id, extracted: collected.length, shown: shown.length });
     } catch (err) {
       const msg = message(err);
       deps.hunts.failHunt(huntRow.id, msg, { addCostCents: usage().costCents });

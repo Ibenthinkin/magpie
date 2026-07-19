@@ -4,6 +4,7 @@ import { loadConfig } from './config';
 import { getDb } from './db/client';
 import { makeHuntsRepo } from './db/hunts';
 import { makeListingsRepo } from './db/listings';
+import { makeWatchesRepo } from './db/watches';
 import {
   adviseCommandData,
   handleAdviseButton,
@@ -11,6 +12,7 @@ import {
   realAdvisePort,
 } from './discord/commands/advise';
 import { handleHuntCommand, huntCommandData } from './discord/commands/hunt';
+import { handleWatchCommand, watchCommandData } from './discord/commands/watch';
 import { adviseTurn } from './engine/advisor';
 import { startGateway } from './discord/gateway';
 import { makeHub } from './discord/hub';
@@ -19,6 +21,7 @@ import { runHunt } from './engine/hunt';
 import { parseTarget } from './engine/target';
 import { log, logError } from './log';
 import { resolveAdapters } from './sources/registry';
+import { startScheduler } from './watch/scheduler';
 import { startWorker } from './watch/worker';
 
 // Composition root: the one long-lived Bun process hosting the Discord
@@ -32,6 +35,7 @@ async function main(): Promise<void> {
   const db = getDb(config.dbPath);
   const hunts = makeHuntsRepo(db);
   const listings = makeListingsRepo(db);
+  const watches = makeWatchesRepo(db);
   const stale = hunts.resetStaleRunning();
   if (stale > 0) log('boot.resetStaleRunning', { count: stale });
 
@@ -46,6 +50,7 @@ async function main(): Promise<void> {
     hub,
     commands: [
       { data: huntCommandData, execute: (i) => handleHuntCommand(i, { parseTarget, hunts }) },
+      { data: watchCommandData, execute: (i) => handleWatchCommand(i, { parseTarget, watches, hunts }) },
       { data: adviseCommandData, execute: (i) => handleAdviseCommand(realAdvisePort(i), { adviseTurn, hunts }) },
     ],
     buttons: [
@@ -60,7 +65,7 @@ async function main(): Promise<void> {
     ],
   });
 
-  const reporter = makeDiscordReporter(gateway.send);
+  const reporter = makeDiscordReporter(gateway.send, { watches });
   const pace = makePacer();
   const worker = startWorker({
     hunts,
@@ -70,10 +75,15 @@ async function main(): Promise<void> {
         getPage: async () => (await getContext()).newPage(),
         hunts,
         listings,
+        watches,
         reporter,
         pace,
       }),
   });
+
+  // Watch scheduler: every-minute tick enqueues watch_run hunts into the same
+  // queue the worker drains (SPEC §2.1). Mode B is mode A on a timer + dedup.
+  const scheduler = startScheduler({ watches, hunts });
   log('boot.ready', { db: config.dbPath, headless: config.headless });
 
   let shuttingDown = false;
@@ -82,6 +92,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     log('shutdown.begin', { signal });
     try {
+      scheduler.stop(); // stop enqueuing new watch runs first
       await worker.stop(); // waits for any in-flight hunt
       await gateway.stop();
       await closeContext();

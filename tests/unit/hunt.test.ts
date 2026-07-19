@@ -96,6 +96,9 @@ interface Harness {
   reported: { hunt: HuntRow; rankedTitles: string[]; extractedCount: number }[];
   errored: { hunt: HuntRow; message: string }[];
   paced: string[];
+  /** watch dedup fake: listing ids already hit, and insertHits calls made. */
+  seen: Set<string>;
+  hitsInserted: { watchId: string; listingIds: string[] }[];
 }
 
 function makeHarness(adapters: SourceAdapter[]): Harness {
@@ -108,6 +111,8 @@ function makeHarness(adapters: SourceAdapter[]): Harness {
     reported: [],
     errored: [],
     paced: [],
+    seen: new Set(),
+    hitsInserted: [],
   };
   let n = 0;
   const hunts: HuntsRepo = {
@@ -141,6 +146,10 @@ function makeHarness(adapters: SourceAdapter[]): Harness {
     listings,
     reporter,
     pace: async (source) => void h.paced.push(source),
+    watches: {
+      unseenListingIds: (_watchId, ids) => ids.filter((id) => !h.seen.has(id)),
+      insertHits: (watchId, listingIds) => void h.hitsInserted.push({ watchId, listingIds }),
+    },
   };
   return h;
 }
@@ -246,6 +255,66 @@ describe('runHunt', () => {
     await runHunt(huntRow(), h.deps);
     expect(h.failed).toHaveLength(1);
     expect(h.failed[0]!.error).toMatch(/source/i);
+  });
+
+  describe('step 6 — watch dedup (watch_run mode only)', () => {
+    const watchRun = (over: Partial<HuntRow> = {}) => huntRow({ mode: 'watch_run', watchId: 'w1', ...over });
+
+    it('first run: everything is new — all ranked reported, hits recorded for the reported ids', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [raw(1), raw(2)])]);
+      await runHunt(watchRun(), h.deps);
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 1', 'Widget 2']);
+      expect(h.hitsInserted).toEqual([{ watchId: 'w1', listingIds: ['L1', 'L2'] }]);
+      expect(h.completed).toHaveLength(1);
+    });
+
+    it('repeat run: already-hit listings are filtered from the report; only new ones get hit rows', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [raw(1), raw(2)])]);
+      h.seen.add('L1'); // raw(1) upserts first → L1
+      await runHunt(watchRun(), h.deps);
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 2']);
+      expect(h.hitsInserted).toEqual([{ watchId: 'w1', listingIds: ['L2'] }]);
+    });
+
+    it('nothing new: reporter still gets the (empty) results call, and no hits are inserted', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [raw(1)])]);
+      h.seen.add('L1');
+      await runHunt(watchRun(), h.deps);
+      expect(h.reported[0]!.rankedTitles).toEqual([]);
+      expect(h.hitsInserted).toEqual([]);
+      expect(h.completed).toHaveLength(1);
+    });
+
+    it('hunt_result history still records ALL ranked rows, not just the unseen ones', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [raw(1), raw(2)])]);
+      h.seen.add('L1');
+      await runHunt(watchRun(), h.deps);
+      expect(h.resultRows[0]!.rows).toHaveLength(2);
+    });
+
+    it('hits are recorded only AFTER a successful report — a failed post must not suppress future notification', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [raw(1)])]);
+      h.deps.reporter.results = async () => {
+        throw new Error('discord down');
+      };
+      await runHunt(watchRun(), h.deps);
+      expect(h.hitsInserted).toEqual([]);
+      expect(h.failed).toHaveLength(1);
+    });
+
+    it('oneshot hunts never consult the dedup', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [raw(1)])]);
+      h.seen.add('L1'); // would suppress if dedup ran
+      await runHunt(huntRow(), h.deps);
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 1']);
+      expect(h.hitsInserted).toEqual([]);
+    });
   });
 
   it('a reporter failure marks the hunt failed rather than losing results silently', async () => {
