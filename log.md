@@ -5,6 +5,18 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-18-26 Sat]] — Phase 2 live smoke of `/watch` against Discord — passed
+
+**Findings** (live boot as `Magpie#8183`, 3 commands registered incl. the subcommand-built `/watch`; two Casio watches added during the run):
+- **Full `/watch` surface verified live.** `add` (immediate first run — real `ChatInputCommandInteraction` satisfies `WatchInteractionPort`), `list`, `pause`/`resume`/`remove` (removed watch disappears from `list`, history kept).
+- **Dedup silence proven through the real scheduler**, not just `runSchedulerTick`: backdated a watch's `next_run_at` → the live croner tick logged `[scheduler.tick] enqueued=1`, worker ran it, `extractListings kept 3/3` → `[hunt.done] … shown=0` (no card posted). Ledger confirms: hit count stayed 4 (no new markers), `hunt_result` retained the full 3-row set, `next_run_at` bumped ~57min out (±10% jitter applied), `last_run_at` set. The "keep full history, filter the notification" invariant holds end-to-end.
+- **Fail-loud, one source** — a Casio query hit an eBay interstitial (`no result cards found … site drift or interstitial?`); that hunt alone went `watch_run`/`failed` with 0 hits while the process continued. Worth watching as watch volume grows — eBay occasionally serves an interstitial.
+- **Clean graceful shutdown** — SIGTERM drained in order: `shutdown.begin → worker.stopped → gateway.stopped → shutdown.done` (scheduler.stop() runs silently first; worker drains before the gateway drops).
+
+**Gotcha:** `bun run src/index.ts` spawns **two** pids — a `bun run` wrapper and the real child holding the SIGTERM handler. Killing the wrapper (`pgrep … | head -1`) reports exit 144 but leaves the actual gateway **orphaned and alive**; graceful shutdown must signal the *child* running `index.ts`. Extends the M8 "`bun run` is never env-isolated" note.
+
+**Open / next:** merge `phase-2-watchlists` → main. Regular **merge commit** — corrected the long-standing "repo disallows merge commits → rebase-merge" note: GitHub actually allows all three merge types (`mergeCommitAllowed: true`), and it's a single-user project, so a plain merge commit is the norm going forward.
+
 ### [[07-17-26 Fri]] — Phase 2 begins: watches repo, engine dedup, watch-hit reporting
 
 **Shipped** (branch `phase-2-watchlists`; Phase 1 merged to main via PR #4 — rebase-merge, the repo disallows merge commits):
