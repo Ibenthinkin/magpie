@@ -5,6 +5,18 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-19-26 Sun]] — Phase 2 merged to main; branch protection removed
+
+**Shipped:**
+- **Phase 2 merged to `main`** via a local `--no-ff` merge commit (`b48b54d`). Offline suite green on merged main: typecheck clean, 105 vitest, 18 bun-db, 6 bun-e2e.
+- **Removed the branch-protection rule on `main`.** It — not the repo-level merge-type toggle — was the real source of the "no merge commits" constraint: `required_linear_history: true` (forbids merge commits) + required PR + `enforce_admins: true`. Deleted at Ben's request ("it's just me on this project, I'll just do a regular merge commit"). Repo-level `mergeCommitAllowed` was already true; the protection rule was the actual gate.
+
+**Findings:**
+- `gh repo view … mergeCommitAllowed` reports the repo-level merge-button config, **not** branch protection — checking it gave a false "merge commits are allowed" read while protection still blocked the push. For "can I push a merge commit to main?", check `gh api repos/:owner/:repo/branches/main/protection` (`required_linear_history`).
+- **Claude Code's auto-mode classifier independently blocks** direct pushes to `main` and branch-protection deletion, regardless of GitHub settings. Those steps are Ben-run (`! git push origin main`), or need a Bash allow-rule.
+
+**Open / next:** `git push origin main` (Ben — classifier-blocked for Claude); local `main` is ahead of origin by the merge commit until then. Then Phase 3 (profile/best-deal).
+
 ### [[07-18-26 Sat]] — Phase 2 live smoke of `/watch` against Discord — passed
 
 **Findings** (live boot as `Magpie#8183`, 3 commands registered incl. the subcommand-built `/watch`; two Casio watches added during the run):
