@@ -17,6 +17,14 @@ messages. `/brief` reads this. Newest on top.
 
 **Open / next:** `git push origin main` (Ben — classifier-blocked for Claude); local `main` is ahead of origin by the merge commit until then. Then Phase 3 (profile/best-deal).
 
+**Phase 3 begun (overnight autonomous session, branch `phase-3-profile`)** — plan at `docs/superpowers/plans/2026-07-19-phase-3-profile.md`; tasks 1–5 of 9 landed, suite green at each step (typecheck clean, 121 vitest, 21 bun-db, 6 bun-e2e):
+- **Profile repo** (`src/db/profile.ts`): `activeFacts()` + soft-remove CRUD over the `profile_fact` table (already in the baseline migration — no new migration needed).
+- **Deterministic best-deal rule decided** — this scopes SPEC §15's open "best-deal definition depth" question: a `membership`/`coupon_source` fact is machine-applied **only when its text names the listing's source** ("10% off ebay" discounts eBay rows, nothing else). `N% off` hits the item price, `$N off` the landed total, percent wins when a fact has both, applicable facts stack, landed clamps ≥ 0. Anything fuzzier is verdict-prompt context only — the LLM narrates deals, never invents math.
+- **Ranking + filter consume facts**: `landedCost(l, facts)`/`discountCents` pure and unit-tested; `rankListings` sorts by discounted landed cost, injects a facts block into both LLM passes, annotates discounted lines, and returns `discountCents` per row; `applyConstraints` price ceiling now judges the discounted cost (a coupon can rescue a listing from the ceiling) and is generic so source-tagged rows survive filtering.
+- **Engine wired**: `HuntDeps.profile`, raws tagged with their adapter's source at collection, facts fetched once per hunt.
+
+**Open / next (Phase 3):** Task 6 `/profile` command family + embeds (discount line on cards), Task 7 seller-rating extraction field, Task 8 e2e (coupon fact through the real queue), Task 9 checklist/log/PR. Live smoke of `/profile` + a discounted hunt is Ben-gated.
+
 ### [[07-18-26 Sat]] — Phase 2 live smoke of `/watch` against Discord — passed
 
 **Findings** (live boot as `Magpie#8183`, 3 commands registered incl. the subcommand-built `/watch`; two Casio watches added during the run):
