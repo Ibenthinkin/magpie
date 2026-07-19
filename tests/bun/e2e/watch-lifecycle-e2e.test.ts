@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { makePacer } from '../../../src/browser/pacing';
 import { makeHuntsRepo } from '../../../src/db/hunts';
 import { makeListingsRepo } from '../../../src/db/listings';
+import { makeProfileRepo } from '../../../src/db/profile';
 import { makeWatchesRepo } from '../../../src/db/watches';
 import type { HuntRow } from '../../../src/db/types';
 import { runHunt, type Reporter } from '../../../src/engine/hunt';
@@ -65,6 +66,7 @@ describe('watch lifecycle e2e (scheduler → queue → engine dedup, fixture sou
       const hunts = makeHuntsRepo(db);
       const listings = makeListingsRepo(db);
       const watches = makeWatchesRepo(db);
+      const profile = makeProfileRepo(db);
 
       // The recording reporter; one deferred settles per COMPLETED run (settling
       // on report alone would race the post-report insertHits/completeHunt).
@@ -91,6 +93,7 @@ describe('watch lifecycle e2e (scheduler → queue → engine dedup, fixture sou
             hunts,
             listings,
             watches,
+            profile,
             reporter,
             pace: makePacer(),
           });

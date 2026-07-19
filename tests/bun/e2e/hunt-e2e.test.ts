@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { makePacer } from '../../../src/browser/pacing';
 import { makeHuntsRepo } from '../../../src/db/hunts';
 import { makeListingsRepo } from '../../../src/db/listings';
+import { makeProfileRepo } from '../../../src/db/profile';
 import { makeWatchesRepo } from '../../../src/db/watches';
 import type { HuntRow } from '../../../src/db/types';
 import { runHunt, type Reporter } from '../../../src/engine/hunt';
@@ -56,6 +57,7 @@ function makePipeline(baseUrl: string) {
   const hunts = makeHuntsRepo(db);
   const listings = makeListingsRepo(db);
   const watches = makeWatchesRepo(db);
+  const profile = makeProfileRepo(db);
 
   const reported: { hunt: HuntRow; ranked: RankedListing[]; extractedCount: number }[] = [];
   const errored: { hunt: HuntRow; message: string }[] = [];
@@ -81,12 +83,13 @@ function makePipeline(baseUrl: string) {
         hunts,
         listings,
         watches,
+        profile,
         reporter,
         pace: makePacer(),
       }),
   });
 
-  return { hunts, listings, reported, errored, settled, worker };
+  return { db, hunts, listings, profile, reported, errored, settled, worker };
 }
 
 describe('hunt e2e through the queue (fixture source, offline)', () => {
