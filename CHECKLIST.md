@@ -37,9 +37,9 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 > Goal: production scaffold replacing the spike — schema, repositories, queue/worker, `/hunt` + `/advise` complete, 2–3 well-behaved sources, fixture adapter + test suite.
 
 ### Project structure
-- [ ] `tsconfig.json` (strict), `src/` layout per SPEC §2.2, `src/index.ts` process entry.
-- [ ] `src/config.ts` (or `env.ts`) — typed env loader validating all SPEC §10 vars at boot.
-- [ ] Structured console logger (one line per hunt step; status/timings/cost fields).
+- [x] `tsconfig.json` (strict), `src/` layout per SPEC §2.2, `src/index.ts` process entry.
+- [x] `src/config.ts` (or `env.ts`) — typed env loader validating all SPEC §10 vars at boot.
+- [x] Structured console logger (one line per hunt step; status/timings/cost fields).
 
 ### Database (Drizzle + bun-sqlite)
 > `bun:sqlite` cannot be imported inside a vitest test file — confirmed, not a config
@@ -47,61 +47,61 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 > it (`hunts.ts`, `listings.ts`, etc.) is exercised in vitest through a repository
 > interface / mocks, not a live db. A small set of real-sqlite integration tests run
 > separately via `bun test` (Bun's native runner), not `bun run test`.
-- [ ] `src/db/schema.ts` — all tables from SPEC §5 (`profile_fact`, `watch`, `hunt`, `listing`, `hunt_result`, `watch_hit`) + indexes §5.7. (Define all now even though watch/profile land later — one migration baseline.)
-- [ ] `drizzle.config.ts`; `bun run db:generate` → migration; `bun run db:migrate` creates `data/magpie.db`.
-- [ ] `src/db/client.ts` — bun-sqlite singleton, WAL mode, `MAGPIE_DB_PATH`.
-- [ ] `src/db/hunts.ts` — `enqueueHunt`, `claimNextHunt()` (atomic `UPDATE…SET status='running' WHERE id=(SELECT…LIMIT 1)`), `completeHunt`, `failHunt`, `resetStaleRunning()`.
-- [ ] `src/db/listings.ts` — `upsertListing` keyed on `(source, source_id)`, refreshes `last_seen_at`.
+- [x] `src/db/schema.ts` — all tables from SPEC §5 (`profile_fact`, `watch`, `hunt`, `listing`, `hunt_result`, `watch_hit`) + indexes §5.7. (Define all now even though watch/profile land later — one migration baseline.)
+- [x] `drizzle.config.ts`; `bun run db:generate` → migration; `bun run db:migrate` creates `data/magpie.db`.
+- [x] `src/db/client.ts` — bun-sqlite singleton, WAL mode, `MAGPIE_DB_PATH`.
+- [x] `src/db/hunts.ts` — `enqueueHunt`, `claimNextHunt()` (atomic `UPDATE…SET status='running' WHERE id=(SELECT…LIMIT 1)`), `completeHunt`, `failHunt`, `resetStaleRunning()`.
+- [x] `src/db/listings.ts` — `upsertListing` keyed on `(source, source_id)`, refreshes `last_seen_at`.
 
 ### Browser layer
-- [ ] `src/browser/session.ts` — `getContext()` / `closeContext()`, one persistent context, serialized use.
-- [ ] `src/browser/pacing.ts` — human-like randomized delays + per-source `minDelayMs` / `maxPerHour` enforcement (exists from Phase 0 for etiquette even before hard sources).
+- [x] `src/browser/session.ts` — `getContext()` / `closeContext()`, one persistent context, serialized use.
+- [x] `src/browser/pacing.ts` — human-like randomized delays + per-source `minDelayMs` / `maxPerHour` enforcement (exists from Phase 0 for etiquette even before hard sources).
 
 ### Sources
-- [ ] `src/sources/types.ts` — `SourceAdapter` interface (SPEC §6.3), `SourceId`, `RawListing`, `NormalizedListing`.
-- [ ] `src/sources/registry.ts` — enabled-adapter registry; `spec.sources ∩ registry` resolution.
-- [ ] `src/sources/ebay.ts` — real adapter (guided search-URL + result-page walk; LLM only for extraction). Pure `toListing`.
-- [ ] `src/sources/fixture.ts` — adapter over a local static test site.
-- [ ] Add 1–2 more well-behaved sources (Google Shopping/SERP + one retailer).
+- [x] `src/sources/types.ts` — `SourceAdapter` interface (SPEC §6.3), `SourceId`, `RawListing`, `NormalizedListing`.
+- [x] `src/sources/registry.ts` — enabled-adapter registry; `spec.sources ∩ registry` resolution.
+- [x] `src/sources/ebay.ts` — real adapter (guided search-URL + result-page walk; LLM only for extraction). Pure `toListing`.
+- [x] `src/sources/fixture.ts` — adapter over a local static test site.
+- [ ] Add 1–2 more well-behaved sources (Google Shopping/SERP + one retailer). *Deferred — eBay + fixture carried Phases 1–3; the registry and `sourceLabel` are ready for a second live source whenever it's wanted.*
 
 ### Engine
-- [ ] `src/engine/llm.ts` — promote the wrapper; accumulate token usage → `hunt.cost_cents`; `generateObject` for structured, `generateText`/`streamText` for advisor.
-- [ ] `src/engine/target.ts` — `parseTarget(query)` → zod-validated `TargetSpec` (SPEC §6.2).
-- [ ] `src/engine/extract.ts` — `extractListings` hardened; token-budget trimming; treat page text as untrusted data (schema-constrained, never instructions).
-- [ ] `src/engine/rank.ts` — `landedCost(l, facts)` (pure, deterministic) + `rankListings` (sort + LLM verdict pass → `hunt_result`).
-- [ ] `src/engine/hunt.ts` — orchestrate the 7-step flow (SPEC §8): target → plan → search (per adapter, paced, `upsertListing`, adapter failure logs + continues) → filter (hard constraints, pre-LLM) → rank → dedup (skip for one-shots) → report.
+- [x] `src/engine/llm.ts` — promote the wrapper; accumulate token usage → `hunt.cost_cents`; `generateObject` for structured, `generateText`/`streamText` for advisor.
+- [x] `src/engine/target.ts` — `parseTarget(query)` → zod-validated `TargetSpec` (SPEC §6.2).
+- [x] `src/engine/extract.ts` — `extractListings` hardened; token-budget trimming; treat page text as untrusted data (schema-constrained, never instructions).
+- [x] `src/engine/rank.ts` — `landedCost(l, facts)` (pure, deterministic) + `rankListings` (sort + LLM verdict pass → `hunt_result`).
+- [x] `src/engine/hunt.ts` — orchestrate the 7-step flow (SPEC §8): target → plan → search (per adapter, paced, `upsertListing`, adapter failure logs + continues) → filter (hard constraints, pre-LLM) → rank → dedup (skip for one-shots) → report.
 
 ### Discord surface
-- [ ] `src/discord/hub.ts` — channel binding to `DISCORD_CHANNEL_ID`, allowlist guard (`DISCORD_ALLOWED_USER_IDS`), agent identity. One file, no framework.
-- [ ] `src/discord/gateway.ts` — client, guild-scoped command registration, allowlist wiring.
-- [ ] `src/discord/embeds.ts` — listing card + status/error/"nothing found" embeds; color-coded by rank.
-- [ ] `src/discord/commands/hunt.ts` — parse options, confirm parsed target in one line, defer + follow-up (3s interaction window), enqueue hunt.
-- [ ] `src/discord/commands/advise.ts` — open a thread, clarifying Q&A loop, propose 2–4 candidates w/ pros/cons, end with **Hunt this** / **Watch this** buttons carrying the concretized `TargetSpec`.
-- [ ] Wire the hunt worker loop (claim → run §8 → report → repeat; idle-sleep 5s empty) into `src/index.ts`; call `resetStaleRunning()` on boot.
+- [x] `src/discord/hub.ts` — channel binding to `DISCORD_CHANNEL_ID`, allowlist guard (`DISCORD_ALLOWED_USER_IDS`), agent identity. One file, no framework.
+- [x] `src/discord/gateway.ts` — client, guild-scoped command registration, allowlist wiring.
+- [x] `src/discord/embeds.ts` — listing card + status/error/"nothing found" embeds; color-coded by rank.
+- [x] `src/discord/commands/hunt.ts` — parse options, confirm parsed target in one line, defer + follow-up (3s interaction window), enqueue hunt.
+- [x] `src/discord/commands/advise.ts` — open a thread, clarifying Q&A loop, propose 2–4 candidates w/ pros/cons, end with **Hunt this** / **Watch this** buttons carrying the concretized `TargetSpec`.
+- [x] Wire the hunt worker loop (claim → run §8 → report → repeat; idle-sleep 5s empty) into `src/index.ts`; call `resetStaleRunning()` on boot.
 
 ### Tests (production-grade from the start — SPEC §12)
-- [ ] Vitest: `landedCost` math, constraint filtering, `TargetSpec` zod edge cases, each adapter's `toListing`, `claimNextHunt` atomicity (concurrent claims on one DB).
-- [ ] Fixture integration: saved-HTML fixtures `tests/fixtures/<source>/*.html` served by a local static server; adapter `search()` runs real Playwright against them. Extraction tested on recorded page-text fixtures; LLM mocked by default, `LIVE_LLM=1` opt-in live pass.
-- [ ] Playwright e2e: full hunt through the `fixture` adapter — enqueue → engine → ranked results in DB. Discord tested at handler level with mocked interactions.
+- [x] Vitest: `landedCost` math, constraint filtering, `TargetSpec` zod edge cases, each adapter's `toListing`, `claimNextHunt` atomicity (concurrent claims on one DB).
+- [x] Fixture integration: saved-HTML fixtures `tests/fixtures/<source>/*.html` served by a local static server; adapter `search()` runs real Playwright against them. Extraction tested on recorded page-text fixtures; LLM mocked by default, `LIVE_LLM=1` opt-in live pass.
+- [x] Playwright e2e: full hunt through the `fixture` adapter — enqueue → engine → ranked results in DB. Discord tested at handler level with mocked interactions.
 
 ### Exit criteria
-- [ ] `/hunt` and `/advise` work end-to-end across the multiple sources; the test suite is green; a real eBay smoke hunt succeeds.
+- [x] `/hunt` and `/advise` work end-to-end across the multiple sources; the test suite is green; a real eBay smoke hunt succeeds. *Met against eBay alone (60/60 rows, 16¢) — "multiple sources" was descoped with the item above.*
 
 ## Phase 2 — Watchlists (B)
 
 > Goal: standing watches on a scheduler → queue → worker pipeline with dedup; notifies only on genuinely new hits. Mode B is mode A on a timer + dedup.
 
-- [ ] `src/db/watches.ts` — `dueWatches(now)`, `bumpNextRun(cadence + jitter)`, CRUD; `watch`/`watch_hit` live (schema from Phase 1).
-- [ ] `src/watch/dedup.ts` — keep only listings with no `watch_hit` for this watch; insert `watch_hit` for new ones (notify at most once, ever).
-- [ ] `src/watch/scheduler.ts` — croner tick every 60s: `dueWatches(now)` → `enqueueHunt(mode:'watch_run')` + `bumpNextRun` with ±10% jitter.
-- [ ] `src/watch/worker.ts` — extend the worker to handle `watch_run` mode (§8 step 6 dedup active).
-- [ ] Batched watch-hit embeds — one message per run, up to 5 cards, prefixed with the watch name (avoid ping spam).
-- [ ] `src/discord/commands/watch.ts` — `add` (confirm parsed target, default cadence 24h), `list` (table: id, name, cadence, status, last-run, hit count), `pause`/`resume`/`remove` (soft state, never deletes listings).
-- [ ] Wire the scheduler into `src/index.ts` alongside gateway + worker.
-- [ ] Tests: scheduler due-selection + jitter bounds; dedup semantics (`watch_hit`); watch-lifecycle e2e (second run notifies nothing new).
+- [x] `src/db/watches.ts` — `dueWatches(now)`, `bumpNextRun(cadence + jitter)`, CRUD; `watch`/`watch_hit` live (schema from Phase 1).
+- [x] ~~`src/watch/dedup.ts`~~ — keep only listings with no `watch_hit` for this watch; insert `watch_hit` for new ones (notify at most once, ever). *Landed as `unseenListingIds`/`insertHits` in `src/db/watches.ts` + engine step 6, not its own file — the logic is two queries and belongs with the repo.*
+- [x] `src/watch/scheduler.ts` — croner tick every 60s: `dueWatches(now)` → `enqueueHunt(mode:'watch_run')` + `bumpNextRun` with ±10% jitter.
+- [x] `src/watch/worker.ts` — extend the worker to handle `watch_run` mode (§8 step 6 dedup active).
+- [x] Batched watch-hit embeds — one message per run, up to 5 cards, prefixed with the watch name (avoid ping spam).
+- [x] `src/discord/commands/watch.ts` — `add` (confirm parsed target, default cadence 24h), `list` (table: id, name, cadence, status, last-run, hit count), `pause`/`resume`/`remove` (soft state, never deletes listings).
+- [x] Wire the scheduler into `src/index.ts` alongside gateway + worker.
+- [x] Tests: scheduler due-selection + jitter bounds; dedup semantics (`watch_hit`); watch-lifecycle e2e (second run notifies nothing new).
 
 ### Exit criteria
-- [ ] A watch created via `/watch add` runs on cadence, notifies on first hit, and stays silent on an unchanged second run. Hundreds of watches don't thundering-herd (jitter + rate limits hold).
+- [x] A watch created via `/watch add` runs on cadence, notifies on first hit, and stays silent on an unchanged second run. Hundreds of watches don't thundering-herd (jitter + rate limits hold).
 
 ## Phase 3 — Profile depth + best-deal logic
 
