@@ -20,6 +20,46 @@ describe('ebay buildSearchUrl', () => {
     expect(url.searchParams.get('_sop')).toBe('15');
   });
 
+  test('a zip-coded location becomes _stpos plus a snapped _sadis radius', () => {
+    const url = new URL(
+      buildSearchUrl({
+        description: 'x',
+        constraints: { location: { near: '94601', maxMiles: 20 } },
+      }),
+    );
+    expect(url.searchParams.get('_stpos')).toBe('94601');
+    // eBay only honours a fixed set of radii; 20 is not one, so snap UP to 25 —
+    // a superset is safe, narrowing below what was asked would hide real matches.
+    expect(url.searchParams.get('_sadis')).toBe('25');
+  });
+
+  test('radius snaps up to the nearest eBay-supported distance and clamps at the maximum', () => {
+    const radius = (maxMiles: number) =>
+      new URL(buildSearchUrl({ description: 'x', constraints: { location: { near: '94601', maxMiles } } }))
+        .searchParams.get('_sadis');
+    expect(radius(3)).toBe('10');
+    expect(radius(10)).toBe('10');
+    expect(radius(26)).toBe('50');
+    expect(radius(9999)).toBe('1000');
+  });
+
+  test('a zip with no radius still anchors the search; a radius with no zip sets neither', () => {
+    const anchored = new URL(buildSearchUrl({ description: 'x', constraints: { location: { near: '94601' } } }));
+    expect(anchored.searchParams.get('_stpos')).toBe('94601');
+    expect(anchored.searchParams.get('_sadis')).toBeNull();
+
+    const orphan = new URL(buildSearchUrl({ description: 'x', constraints: { location: { maxMiles: 25 } } }));
+    expect(orphan.searchParams.get('_sadis')).toBeNull();
+  });
+
+  test('a place name eBay cannot anchor on is NOT guessed into a zip', () => {
+    const url = new URL(
+      buildSearchUrl({ description: 'x', constraints: { location: { near: 'Oakland, CA', maxMiles: 20 } } }),
+    );
+    expect(url.searchParams.get('_stpos')).toBeNull();
+    expect(url.searchParams.get('_sadis')).toBeNull();
+  });
+
   test('price ceiling lands as whole dollars, condition as its eBay code', () => {
     const url = new URL(
       buildSearchUrl({
@@ -56,6 +96,11 @@ describe('ebay toListing', () => {
 
   test('carries an extracted seller rating through to the normalized row', () => {
     expect(ebayAdapter.toListing(raw({ sellerRating: 99.4 }))!.sellerRating).toBe(99.4);
+  });
+
+  test('carries an extracted item location through to the normalized row', () => {
+    expect(ebayAdapter.toListing(raw({ location: 'San Jose, CA' }))!.location).toBe('San Jose, CA');
+    expect(ebayAdapter.toListing(raw())!.location).toBeNull();
   });
 
   test('a row with no seller rating still parses and normalizes to null', () => {

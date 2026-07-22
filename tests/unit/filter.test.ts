@@ -78,4 +78,15 @@ describe('applyConstraints', () => {
     expect(applyConstraints([over], target({ maxPriceCents: 10_000 }))).toEqual([]); // undiscounted: over ceiling
     expect(applyConstraints([over], target({ maxPriceCents: 10_000 }), facts)).toEqual([over]); // 9450 after coupon
   });
+
+  // Deliberate non-behavior, pinned so nobody "fixes" it into fake distance math:
+  // judging that "San Jose, CA" is outside 20 miles of Oakland needs geocoding we
+  // don't have. Radius narrowing is the source's job (ebay.ts sets _stpos/_sadis);
+  // anything that gets through is the ranking step's judgment call, not a filter's.
+  it('never drops a listing on location — we do not compute distance', () => {
+    const far = { ...raw({}), location: 'Anchorage, AK' };
+    const near = { ...raw({}), location: null };
+    const t = target({ location: { near: 'Oakland, CA', maxMiles: 5 } });
+    expect(applyConstraints([far, near], t)).toEqual([far, near]);
+  });
 });

@@ -65,7 +65,7 @@ export function makeFixtureAdapter(baseUrl?: string): SourceAdapter {
         currency: 'USD',
         condition: raw.condition,
         sellerRating: raw.sellerRating ?? null,
-        location: null,
+        location: raw.location ?? null,
         imageUrl: null,
         rawJson: JSON.stringify(raw),
       };

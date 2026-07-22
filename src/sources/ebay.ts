@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import { extractListings } from '../engine/extract';
-import type { TargetSpec } from '../engine/target';
+import { canAnchorRadius, type TargetSpec } from '../engine/target';
 import type { NormalizedListing, RawListing, SourceAdapter } from './types';
 
 // Guided eBay search: deterministic URL from the target, then grab reduced page
@@ -13,6 +13,16 @@ const CONDITION_CODE: Record<string, string> = {
   used: '3000',
 };
 
+// `_sadis` only honours this fixed ladder of radii. We snap UP to the next rung
+// so the result set is a superset of what was asked — narrowing tighter than
+// requested would hide real matches, and the listing's own location is shown on
+// every card for the reader to judge.
+const EBAY_RADII = [10, 25, 50, 100, 200, 500, 1000];
+
+function snapRadius(miles: number): number {
+  return EBAY_RADII.find((r) => r >= miles) ?? EBAY_RADII[EBAY_RADII.length - 1]!;
+}
+
 export function buildSearchUrl(target: TargetSpec): string {
   const p = new URLSearchParams();
   p.set('_nkw', target.description);
@@ -24,6 +34,20 @@ export function buildSearchUrl(target: TargetSpec): string {
   const cond = target.constraints.conditions?.[0];
   const code = cond ? CONDITION_CODE[cond] : undefined;
   if (code) p.set('LH_ItemCondition', code);
+
+  // Geo narrowing happens HERE, at the source, where eBay computes real
+  // distances server-side. See applyConstraints for why we don't filter on
+  // distance ourselves afterwards.
+  const loc = target.constraints.location;
+  if (canAnchorRadius(loc)) {
+    p.set('_stpos', loc!.near!.trim());
+    if (loc!.maxMiles != null && loc!.maxMiles > 0) p.set('_sadis', String(snapRadius(loc!.maxMiles)));
+  } else if (loc?.near) {
+    console.warn(
+      `[ebay] location "${loc.near}" is not a US zip — searching without a radius. ` +
+        'Item locations still reach the ranking step and the cards.',
+    );
+  }
 
   return `https://www.ebay.com/sch/i.html?${p.toString()}`;
 }
@@ -147,7 +171,7 @@ export const ebayAdapter: SourceAdapter = {
       currency: 'USD',
       condition: raw.condition,
       sellerRating: raw.sellerRating ?? null,
-      location: null,
+      location: raw.location ?? null,
       imageUrl: null,
       rawJson: JSON.stringify(raw),
     };

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { EnqueueHuntInput, HuntRow } from '../../src/db/types';
 import { setGenerateForTests } from '../../src/engine/llm';
 import { parseTarget } from '../../src/engine/target';
-import { handleHuntCommand, type HuntInteractionPort } from '../../src/discord/commands/hunt';
+import { describeTarget, handleHuntCommand, type HuntInteractionPort } from '../../src/discord/commands/hunt';
 
 // SPEC §3.1: defer immediately (3 s interaction window) → parse the query into
 // a TargetSpec → confirm back in one line → enqueue. The parse call's LLM cost
@@ -44,6 +44,39 @@ function makeHunts() {
     },
   };
 }
+
+describe('describeTarget — location', () => {
+  it('states the area being searched', () => {
+    const line = describeTarget({
+      description: 'standing desk',
+      constraints: { location: { near: '94601', maxMiles: 25 } },
+    });
+    expect(line).toContain('94601');
+    expect(line).toContain('25');
+  });
+
+  // The whole point: asking for a radius and silently not getting one is the
+  // failure mode this codebase forbids. Say so at request time, not never.
+  it('warns when a radius was asked for but the place name cannot anchor it', () => {
+    const line = describeTarget({
+      description: 'standing desk',
+      constraints: { location: { near: 'Oakland, CA', maxMiles: 25 } },
+    });
+    expect(line).toMatch(/zip/i);
+  });
+
+  it('a zip-anchored radius carries no warning', () => {
+    const line = describeTarget({
+      description: 'standing desk',
+      constraints: { location: { near: '94601', maxMiles: 25 } },
+    });
+    expect(line).not.toMatch(/zip/i);
+  });
+
+  it('says nothing about location when the request had none', () => {
+    expect(describeTarget({ description: 'x', constraints: {} })).not.toMatch(/near|zip|mile/i);
+  });
+});
 
 describe('handleHuntCommand', () => {
   it('defers, parses, enqueues a oneshot for the channel, and confirms in one line', async () => {

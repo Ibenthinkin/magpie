@@ -93,9 +93,11 @@ const MATCH_SYSTEM = [
 const VERDICT_SYSTEM = [
   'You are a savvy shopping assistant. For each listing give ONE concise sentence judging fit',
   'and value vs the target. Cite only the fields shown (title, landed price, condition, seller',
-  'rating) — never invent details. Be direct: flag anything off about fit, price or a weak seller',
-  'rating, and call out standout deals. When a membership or coupon discount changed a landed',
-  'price, say so.',
+  'rating, location) — never invent details. Be direct: flag anything off about fit, price or a',
+  'weak seller rating, and call out standout deals. When a membership or coupon discount changed',
+  'a landed price, say so. If the target asks for somewhere specific, say plainly when a listing',
+  'looks too far away — judge it from the location shown, and say you are unsure rather than',
+  'inventing a distance.',
 ].join(' ');
 
 const factsBlock = (facts: ProfileFactRow[]) =>
@@ -107,7 +109,8 @@ const listingLine = (l: RankInput, i: number, facts: ProfileFactRow[]) => {
   const off = discountCents(l, facts);
   const discount = off > 0 ? ` (after $${(off / 100).toFixed(2)} membership/coupon discount)` : '';
   const seller = l.sellerRating != null ? `, seller: ${l.sellerRating}%` : '';
-  return `${i}. ${l.title} — $${(landedCost(l, facts) / 100).toFixed(2)} landed${discount}, condition: ${l.condition ?? 'unknown'}${seller}`;
+  const where = l.location ? `, location: ${l.location}` : '';
+  return `${i}. ${l.title} — $${(landedCost(l, facts) / 100).toFixed(2)} landed${discount}, condition: ${l.condition ?? 'unknown'}${seller}${where}`;
 };
 
 const targetPrompt = (target: TargetSpec, lines: string, facts: ProfileFactRow[]) =>

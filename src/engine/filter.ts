@@ -6,6 +6,14 @@ import type { TargetSpec } from './target';
 // SPEC §8 step 4: deterministic hard-constraint pass before any LLM spend.
 // Only constraints that can be checked mechanically live here (price ceiling,
 // condition); mustHave needs judgment and stays with the rank triage.
+//
+// `constraints.location` is deliberately NOT enforced here. Deciding that
+// "San Jose, CA" is outside 20 miles of Oakland needs geocoding, and Magpie
+// talks to Discord, OpenRouter and retail sites only — adding a geo service to
+// hard-drop listings would trade a load-bearing constraint for a guess. Instead
+// the radius is pushed to the source, which computes real distances server-side
+// (ebay.ts sets `_stpos`/`_sadis`), and each listing's stated location rides
+// into the ranking prompts and onto its card for the reader to judge.
 
 type Condition = 'new' | 'used' | 'refurbished';
 

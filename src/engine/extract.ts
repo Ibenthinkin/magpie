@@ -22,6 +22,10 @@ const looseRowSchema = z.object({
     .number()
     .nullable()
     .describe('seller rating as shown — eBay feedback percent like 99.4 — or null if the row has none'),
+  location: z
+    .string()
+    .nullable()
+    .describe('item location exactly as shown, e.g. "San Jose, CA" or "United Kingdom"; null if absent'),
 });
 const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 

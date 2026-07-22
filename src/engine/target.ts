@@ -30,6 +30,19 @@ export const targetSpecSchema = z.object({
 
 export type TargetSpec = z.infer<typeof targetSpecSchema>;
 
+/**
+ * Sources anchor a radius search on a postal code, not a place name, and we
+ * never turn "Oakland, CA" into a zip ourselves — a guessed centroid would
+ * silently search the wrong place, which is worse than not narrowing at all.
+ * Callers use this to decide whether a radius can actually be enforced
+ * (`ebay.ts` builds the URL from it; `/hunt` warns the user when it can't).
+ */
+const POSTAL_ANCHOR = /^\d{5}(?:-\d{4})?$/;
+
+export function canAnchorRadius(location: TargetSpec['constraints']['location']): boolean {
+  return location?.near !== undefined && POSTAL_ANCHOR.test(location.near.trim());
+}
+
 const SYSTEM = [
   "You turn a shopper's freeform request into a structured shopping target.",
   'Extract only what the user actually stated or clearly implied — never invent constraints.',
