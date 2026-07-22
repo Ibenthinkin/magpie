@@ -146,7 +146,7 @@ export const ebayAdapter: SourceAdapter = {
       shippingCents: raw.shippingCents,
       currency: 'USD',
       condition: raw.condition,
-      sellerRating: null, // not extracted yet (Phase 3 refinement)
+      sellerRating: raw.sellerRating ?? null,
       location: null,
       imageUrl: null,
       rawJson: JSON.stringify(raw),

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { buildSearchUrl, ebayAdapter } from '../../src/sources/ebay';
 import { makeFixtureAdapter } from '../../src/sources/fixture';
 import { resolveAdapters } from '../../src/sources/registry';
-import type { RawListing } from '../../src/sources/types';
+import { rawListingSchema, type RawListing } from '../../src/sources/types';
 
 const raw = (over: Partial<RawListing> = {}): RawListing => ({
   title: 'MX Master 3S',
@@ -53,6 +53,16 @@ describe('ebay toListing', () => {
     expect(ebayAdapter.toListing(raw({ url: 'https://www.ebay.com/itm/123456' }))).toBeNull();
     expect(ebayAdapter.toListing(raw({ url: 'https://evil.example/itm/123456789012' }))).toBeNull();
   });
+
+  test('carries an extracted seller rating through to the normalized row', () => {
+    expect(ebayAdapter.toListing(raw({ sellerRating: 99.4 }))!.sellerRating).toBe(99.4);
+  });
+
+  test('a row with no seller rating still parses and normalizes to null', () => {
+    expect(rawListingSchema.safeParse(raw()).success).toBe(true);
+    expect(ebayAdapter.toListing(raw())!.sellerRating).toBeNull();
+    expect(ebayAdapter.toListing(raw({ sellerRating: null }))!.sellerRating).toBeNull();
+  });
 });
 
 describe('fixture toListing', () => {
@@ -60,6 +70,12 @@ describe('fixture toListing', () => {
     const adapter = makeFixtureAdapter('http://127.0.0.1:1234');
     const l = adapter.toListing(raw({ url: 'http://127.0.0.1:1234/item/fx-001.html' }));
     expect(l).toMatchObject({ source: 'fixture', sourceId: 'fx-001' });
+  });
+
+  test('carries an extracted seller rating', () => {
+    const adapter = makeFixtureAdapter('http://127.0.0.1:1234');
+    const l = adapter.toListing(raw({ url: 'http://127.0.0.1:1234/item/fx-001.html', sellerRating: 98 }));
+    expect(l!.sellerRating).toBe(98);
   });
 
   test('rejects rows without an item URL', () => {

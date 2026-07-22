@@ -1,4 +1,4 @@
-import type { hunt, huntResult, listing, watch } from './schema';
+import type { hunt, huntResult, listing, profileFact, watch } from './schema';
 
 // Repository seam (engine/worker/commands depend on these interfaces; only
 // index.ts, scripts/ and tests/bun/ import the concrete bun:sqlite-backed
@@ -71,4 +71,22 @@ export interface WatchesRepo {
   /** Record hits (notify-at-most-once marker) for this watch. */
   insertHits(watchId: string, listingIds: string[], notifiedAt: string): void;
   countHits(watchId: string): number;
+}
+
+export type ProfileFactRow = typeof profileFact.$inferSelect;
+export type ProfileFactCategory = ProfileFactRow['category'];
+
+export interface NewProfileFact {
+  category: ProfileFactCategory;
+  label: string;
+  value: string;
+}
+
+export interface ProfileRepo {
+  addFact(input: NewProfileFact): ProfileFactRow;
+  getFact(id: string): ProfileFactRow | null;
+  /** active = 1, insertion order — every hunt's ranking step consumes these (SPEC §3.4). */
+  activeFacts(): ProfileFactRow[];
+  /** Soft remove (active = 0): keeps the row, hides it from list and ranking. */
+  removeFact(id: string): void;
 }

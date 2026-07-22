@@ -253,13 +253,17 @@ export function extractListings(pageText: string, target: TargetSpec): Promise<R
 
 ### 6.5 Ranking — `src/engine/rank.ts`
 ```typescript
-export function landedCost(l: NormalizedListing, facts: ProfileFact[]): number;
-// price + shipping − deterministic membership/coupon discounts (cents)
+export function discountCents(l: CostableListing, facts: ProfileFactRow[]): number;
+export function landedCost(l: CostableListing, facts?: ProfileFactRow[]): number;
+// price + shipping − deterministic membership/coupon discounts (cents), clamped ≥ 0
 export function rankListings(
-  listings: NormalizedListing[], target: TargetSpec, facts: ProfileFact[]
+  listings: (RawListing & { source?: string })[], target: TargetSpec, facts?: ProfileFactRow[]
 ): Promise<RankedListing[]>;  // landed-cost sort + LLM verdict/adjustment pass
 ```
 - Deterministic math first (unit-testable), LLM verdict second (condition/seller-rating/fit judgment, one line per listing).
+- **The deterministic discount rule (Phase 3 — resolves the §15 "best deal" open question).** A `membership` or `coupon_source` fact is machine-applied **only when its text names the listing's source** — `"10% off ebay"` discounts eBay rows and nothing else. `N% off` comes off the item price; `$N off` comes off the landed total; percent wins when a fact contains both; applicable facts stack; landed cost clamps at ≥ 0. Matching is case-insensitive across the fact's label *and* value.
+- **Everything fuzzier is verdict context, not math.** Facts that don't parse or don't name a source still reach both LLM passes as a profile block, so the model can narrate a deal it recognizes — but it never invents the number. The sort, the price ceiling (`applyConstraints`), and the stored `hunt_result.landed_cost_cents` all use the discounted figure, so "cheapest" always means price-after-coupons.
+- Seller rating and condition are **verdict-layer inputs only** — they are shown on the listing line and the card, and the model is licensed to judge them, but they never adjust landed cost. Deterministic money math stays limited to figures we can defend arithmetically.
 
 ### 6.6 LLM client — `src/engine/llm.ts`
 - Vercel AI SDK over `@openrouter/ai-sdk-provider`; model id from `MAGPIE_MODEL`. All calls flow through one wrapper that accumulates token usage → `hunt.cost_cents`. `generateObject` for structured outputs (target parsing, extraction), `generateText`/`streamText` for advisor conversation.
@@ -324,6 +328,7 @@ One hunt, end to end (`src/engine/hunt.ts`):
 | `DISCORD_ALLOWED_USER_IDS` | csv allowlist |
 | `OPENROUTER_API_KEY` | LLM access |
 | `MAGPIE_MODEL` | OpenRouter model id (default: an Anthropic Claude) |
+| `MAGPIE_EXTRACT_MODEL` | *optional* — cheaper model for the extraction pass only; unset means every call uses `MAGPIE_MODEL` |
 | `MAGPIE_DB_PATH` | SQLite file (default `data/magpie.db`) |
 | `BROWSER_PROFILE_DIR` | persistent Chromium profile (default `browser-profile/`) |
 | `HEADLESS` | `false` for login/debug sessions |
@@ -359,9 +364,11 @@ Production-grade from the start (portfolio / work-transferable practice — non-
     "db:generate":"drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "test":       "vitest run",
-    "test:e2e":   "playwright test"
+    "test:db":    "bun test tests/bun/db",
+    "test:e2e":   "bun test tests/bun/e2e"
   }
   ```
+  > **Amended in Phase 1.** `@playwright/test` was dropped: it runs under Node, where `bun:sqlite` does not exist, so an e2e touching the real queue could never run there. The e2e uses the Playwright *library* under Bun's own runner instead. That also splits the suite by runtime — vitest owns `tests/unit/**`, `bun test` owns `tests/bun/**` (see §12).
 
 ## 14. Development workflow (build order)
 
@@ -379,7 +386,7 @@ Production-grade from the start (portfolio / work-transferable practice — non-
 - **LLM cost scaling.** Browser-agent loops × hundreds of watch runs add up. Mitigation: guided (non-LLM) navigation, trimmed extraction inputs, per-hunt cost accounting, conservative default cadence. *Watch `hunt.cost_cents` from Phase 0.*
 - **Extraction reliability.** Messy listing pages → clean comparable data is the quality bottleneck. *Validated in Phase 0 against eBay; fixture corpus grows with each adapter.*
 - **Chrome profile vs. detection.** Persistent-context headless Chromium may still be fingerprinted by hard sources; headed-in-xvfb or a real `channel: 'chrome'` install are the fallbacks. *Decided empirically in Phase 4 — not an MVP concern.*
-- **"Best deal" definition depth** (deferred from refine): how far coupon/promo hunting goes beyond stored memberships (e.g. actively searching coupon sites) — *scoped in Phase 3.*
+- ~~**"Best deal" definition depth**~~ (deferred from refine): how far coupon/promo hunting goes beyond stored memberships (e.g. actively searching coupon sites). **Resolved in Phase 3** — the answer is "not at all, by design". Magpie applies discounts only from facts the owner stored, and only when the fact names the source (rule in §6.5); it does not go looking for coupons. Anything the owner can't state as a source-scoped fact stays LLM narration on top of honest arithmetic. Revisit only if stored facts prove too blunt in practice.
 
 ## 16. Project log — rollup to planning vault
 

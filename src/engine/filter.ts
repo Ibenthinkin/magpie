@@ -1,3 +1,4 @@
+import type { ProfileFactRow } from '../db/types';
 import type { RawListing } from '../sources/types';
 import { landedCost } from './rank';
 import type { TargetSpec } from './target';
@@ -21,12 +22,20 @@ function classifyCondition(text: string | null): Condition | null {
   return null;
 }
 
-/** Drop listings that violate hard constraints; ties go to keeping the listing. */
-export function applyConstraints(listings: RawListing[], target: TargetSpec): RawListing[] {
+/**
+ * Drop listings that violate hard constraints; ties go to keeping the listing.
+ * Generic so source-tagged rows keep their tag; the price ceiling judges the
+ * DISCOUNTED landed cost (price-after-coupons, Phase 3).
+ */
+export function applyConstraints<T extends RawListing & { source?: string }>(
+  listings: T[],
+  target: TargetSpec,
+  facts: ProfileFactRow[] = [],
+): T[] {
   const { maxPriceCents, conditions } = target.constraints;
 
   const kept = listings.filter((l) => {
-    if (maxPriceCents != null && landedCost(l) > maxPriceCents) return false;
+    if (maxPriceCents != null && landedCost(l, facts) > maxPriceCents) return false;
     if (conditions && conditions.length > 0) {
       const c = classifyCondition(l.condition);
       if (c !== null && !conditions.includes(c)) return false;

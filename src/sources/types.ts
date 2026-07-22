@@ -16,6 +16,10 @@ export const rawListingSchema = z.object({
   shippingCents: z.number().nullable(),
   condition: z.string().nullable(),
   url: z.string().nullable(),
+  // Optional so rows extracted before this field existed (and every hand-written
+  // fixture) stay valid; it feeds the verdict prompt and the card, never the
+  // deterministic cost math — SPEC §6.5 puts seller rating in the LLM's hands.
+  sellerRating: z.number().nullable().optional(),
 });
 export type RawListing = z.infer<typeof rawListingSchema>;
 

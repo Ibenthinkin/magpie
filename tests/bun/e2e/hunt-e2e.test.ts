@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { makePacer } from '../../../src/browser/pacing';
 import { makeHuntsRepo } from '../../../src/db/hunts';
 import { makeListingsRepo } from '../../../src/db/listings';
+import { makeProfileRepo } from '../../../src/db/profile';
 import { makeWatchesRepo } from '../../../src/db/watches';
+import { listing } from '../../../src/db/schema';
 import type { HuntRow } from '../../../src/db/types';
 import { runHunt, type Reporter } from '../../../src/engine/hunt';
 import { setGenerateForTests } from '../../../src/engine/llm';
@@ -56,6 +58,7 @@ function makePipeline(baseUrl: string) {
   const hunts = makeHuntsRepo(db);
   const listings = makeListingsRepo(db);
   const watches = makeWatchesRepo(db);
+  const profile = makeProfileRepo(db);
 
   const reported: { hunt: HuntRow; ranked: RankedListing[]; extractedCount: number }[] = [];
   const errored: { hunt: HuntRow; message: string }[] = [];
@@ -81,12 +84,13 @@ function makePipeline(baseUrl: string) {
         hunts,
         listings,
         watches,
+        profile,
         reporter,
         pace: makePacer(),
       }),
   });
 
-  return { hunts, listings, reported, errored, settled, worker };
+  return { db, hunts, listings, profile, reported, errored, settled, worker };
 }
 
 describe('hunt e2e through the queue (fixture source, offline)', () => {
@@ -127,6 +131,38 @@ describe('hunt e2e through the queue (fixture source, offline)', () => {
       expect(p.reported[0]!.extractedCount).toBe(5);
       expect(p.reported[0]!.ranked).toHaveLength(5);
       expect(p.errored).toHaveLength(0);
+    },
+    20_000,
+  );
+
+  test(
+    'a coupon_source fact naming the source discounts landed cost end to end',
+    async () => {
+      fakeRankLlm();
+      const p = makePipeline(server.baseUrl);
+      p.profile.addFact({ category: 'coupon_source', label: 'fixture promo', value: '10% off fixture' });
+      const enqueued = p.hunts.enqueueHunt({
+        mode: 'oneshot',
+        query: 'widget pro 3000',
+        targetJson: JSON.stringify({ description: 'widget pro 3000', constraints: {} }),
+        channelId: 'chan-e2e',
+      });
+
+      await p.settled;
+      await p.worker.stop();
+
+      expect(p.hunts.getHunt(enqueued.id)!.status).toBe('done');
+
+      // Every persisted result is the DISCOUNTED landed cost, not the sticker.
+      const byId = new Map(p.db.select().from(listing).all().map((l) => [l.id, l]));
+      const results = p.listings.resultsForHunt(enqueued.id);
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        const l = byId.get(r.listingId)!;
+        const expected = Math.max(0, l.priceCents! + (l.shippingCents ?? 0) - Math.round(l.priceCents! * 0.1));
+        expect(r.landedCostCents).toBe(expected);
+      }
+      expect(p.reported[0]!.ranked.every((x) => x.discountCents > 0)).toBe(true);
     },
     20_000,
   );

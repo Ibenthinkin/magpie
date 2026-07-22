@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { rawListingSchema, type RawListing } from '../sources/types';
-import { genObject } from './llm';
+import { extractionModel, genObject } from './llm';
 import type { TargetSpec } from './target';
 
 // Extraction is the prompt-injection boundary: page text is untrusted DATA to
@@ -18,6 +18,10 @@ const looseRowSchema = z.object({
     .string()
     .nullable()
     .describe('copy the URL verbatim from the row\'s "URL:" line; null if the row has none. Never construct one'),
+  sellerRating: z
+    .number()
+    .nullable()
+    .describe('seller rating as shown — eBay feedback percent like 99.4 — or null if the row has none'),
 });
 const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 
@@ -38,6 +42,9 @@ export async function extractListings(pageText: string, target: TargetSpec): Pro
     schema: extractSchema,
     system: SYSTEM,
     prompt: `Target item: ${target.description}\n\nPage text:\n${pageText}`,
+    // Extraction output tokens dominate a hunt's spend, so this pass is the one
+    // worth routing to a cheaper model — opt-in via MAGPIE_EXTRACT_MODEL.
+    model: extractionModel(),
   });
 
   const kept: RawListing[] = [];

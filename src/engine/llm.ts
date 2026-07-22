@@ -15,14 +15,37 @@ function env(key: string): string {
 
 // Lazy init: modules that import this one must stay loadable without env vars
 // (vitest imports adapters → extract → here with the LLM faked).
-let modelId: string | undefined;
-let model: ReturnType<ReturnType<typeof createOpenRouter>['chat']> | undefined;
+let defaultModelId: string | undefined;
+let provider: ReturnType<typeof createOpenRouter> | undefined;
+const models = new Map<string, ReturnType<ReturnType<typeof createOpenRouter>['chat']>>();
 
-function getModel() {
-  modelId ??= env('MAGPIE_MODEL');
-  // usage.include makes OpenRouter report the real USD cost per response.
-  model ??= createOpenRouter({ apiKey: env('OPENROUTER_API_KEY') }).chat(modelId, { usage: { include: true } });
+/** A call's explicit model, else MAGPIE_MODEL. */
+function resolveModelId(id: string | undefined): string {
+  if (id) return id;
+  defaultModelId ??= env('MAGPIE_MODEL');
+  return defaultModelId;
+}
+
+function getModel(id: string) {
+  provider ??= createOpenRouter({ apiKey: env('OPENROUTER_API_KEY') });
+  let model = models.get(id);
+  if (!model) {
+    // usage.include makes OpenRouter report the real USD cost per response.
+    model = provider.chat(id, { usage: { include: true } });
+    models.set(id, model);
+  }
   return model;
+}
+
+/**
+ * Optional cheaper model for the extraction pass — the first cost lever, since
+ * extraction output tokens dominate a hunt's spend (a 60-row eBay extraction was
+ * $0.118 of a $0.157 hunt). Unset means every call uses MAGPIE_MODEL, so the
+ * default behavior is unchanged and a cheap model can never silently degrade
+ * extraction quality without someone opting in. Read per call, not cached.
+ */
+export function extractionModel(): string | undefined {
+  return process.env.MAGPIE_EXTRACT_MODEL || undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +95,7 @@ export function withUsage<T>(fn: (usage: () => UsageTotals) => Promise<T>): Prom
   return bucketStore.run(bucket, () => fn(usage));
 }
 
-function account(label: string, usage: { inputTokens?: number; outputTokens?: number } | undefined, costUsd: number | undefined): void {
+function account(label: string, modelId: string, usage: { inputTokens?: number; outputTokens?: number } | undefined, costUsd: number | undefined): void {
   const inTok = usage?.inputTokens ?? 0;
   const outTok = usage?.outputTokens ?? 0;
   const usd = costUsd ?? (inTok * FALLBACK_USD_PER_MTOK.input + outTok * FALLBACK_USD_PER_MTOK.output) / 1_000_000;
@@ -85,7 +108,7 @@ function account(label: string, usage: { inputTokens?: number; outputTokens?: nu
     bucket.costUsd += usd;
   }
   console.log(
-    `[llm] ${label} model=${modelId ?? 'fake'} in=${inTok} out=${outTok} usd=${usd.toFixed(6)}` +
+    `[llm] ${label} model=${modelId} in=${inTok} out=${outTok} usd=${usd.toFixed(6)}` +
       (costUsd === undefined ? ' (estimated)' : ''),
   );
 }
@@ -131,40 +154,48 @@ export async function genObject<T>(opts: {
   prompt: string;
   system?: string;
   label?: string; // identifies the call site in logs
+  model?: string; // overrides MAGPIE_MODEL for this call
 }): Promise<T> {
   const label = opts.label ?? 'genObject';
 
   if (fakeGenerate) {
     const fake = await fakeGenerate({ kind: 'object', label: opts.label, system: opts.system, prompt: opts.prompt });
-    account(label, fake.usage, fake.costUsd);
+    account(label, 'fake', fake.usage, fake.costUsd);
     return fake.object as T;
   }
 
+  const modelId = resolveModelId(opts.model);
   const { object, usage, providerMetadata } = await generateObject({
-    model: getModel(),
+    model: getModel(modelId),
     schema: opts.schema,
     system: opts.system,
     prompt: opts.prompt,
   });
-  account(label, usage, reportedCost(providerMetadata));
+  account(label, modelId, usage, reportedCost(providerMetadata));
   return object as T;
 }
 
 /** Plain-text generation (advisor turns) with the same accounting. */
-export async function genText(opts: { prompt: string; system?: string; label?: string }): Promise<string> {
+export async function genText(opts: {
+  prompt: string;
+  system?: string;
+  label?: string;
+  model?: string;
+}): Promise<string> {
   const label = opts.label ?? 'genText';
 
   if (fakeGenerate) {
     const fake = await fakeGenerate({ kind: 'text', label: opts.label, system: opts.system, prompt: opts.prompt });
-    account(label, fake.usage, fake.costUsd);
+    account(label, 'fake', fake.usage, fake.costUsd);
     return fake.text ?? '';
   }
 
+  const modelId = resolveModelId(opts.model);
   const { text, usage, providerMetadata } = await generateText({
-    model: getModel(),
+    model: getModel(modelId),
     system: opts.system,
     prompt: opts.prompt,
   });
-  account(label, usage, reportedCost(providerMetadata));
+  account(label, modelId, usage, reportedCost(providerMetadata));
   return text;
 }

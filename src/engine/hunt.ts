@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { Pacer } from '../browser/pacing';
-import type { HuntRow, HuntsRepo, ListingsRepo, NewHuntResult, WatchesRepo } from '../db/types';
+import type { HuntRow, HuntsRepo, ListingsRepo, NewHuntResult, ProfileRepo, WatchesRepo } from '../db/types';
 import { log, logError } from '../log';
 import type { RawListing, SourceAdapter } from '../sources/types';
 import { applyConstraints } from './filter';
@@ -29,6 +29,8 @@ export interface HuntDeps {
   hunts: HuntsRepo;
   listings: ListingsRepo;
   watches: Pick<WatchesRepo, 'unseenListingIds' | 'insertHits'>;
+  /** Phase 3: every hunt's ranking step consults the active profile facts. */
+  profile: Pick<ProfileRepo, 'activeFacts'>;
   reporter: Reporter;
   pace: Pacer;
   now?: () => string;
@@ -47,7 +49,8 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
       if (adapters.length === 0) throw new Error('no usable sources for this hunt');
 
       // 3. Search: sequential per adapter; one source failing logs and continues.
-      const collected: { raw: RawListing; listingId: string }[] = [];
+      // Raws are tagged with their adapter's source so profile discounts can scope.
+      const collected: { raw: RawListing & { source: string }; listingId: string }[] = [];
       const sourceErrors: string[] = [];
       const page = await deps.getPage();
       try {
@@ -63,7 +66,7 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
                 continue;
               }
               const row = deps.listings.upsertListing(norm);
-              collected.push({ raw, listingId: row.id });
+              collected.push({ raw: { ...raw, source: adapter.source }, listingId: row.id });
             }
             log('hunt.search', { hunt: huntRow.id, source: adapter.source, kept: raws.length - dropped, dropped });
           } catch (err) {
@@ -79,12 +82,15 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
         throw new Error(`all sources failed — ${sourceErrors.join('; ')}`);
       }
 
-      // 4–5. Filter (deterministic, pre-LLM) then rank.
+      // 4–5. Filter (deterministic, pre-LLM) then rank — both consult the
+      // active profile facts (SPEC §3.4: every hunt's ranking step).
+      const facts = deps.profile.activeFacts();
       const kept = applyConstraints(
         collected.map((c) => c.raw),
         target,
+        facts,
       );
-      const ranked = kept.length > 0 ? await rankListings(kept, target) : [];
+      const ranked = kept.length > 0 ? await rankListings(kept, target, facts) : [];
 
       // Persist hunt_result rows. Ranked rows are copies of the raws, so join back
       // to listing ids by URL — toListing guarantees every collected raw has one.

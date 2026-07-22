@@ -4,6 +4,7 @@ import { loadConfig } from './config';
 import { getDb } from './db/client';
 import { makeHuntsRepo } from './db/hunts';
 import { makeListingsRepo } from './db/listings';
+import { makeProfileRepo } from './db/profile';
 import { makeWatchesRepo } from './db/watches';
 import {
   adviseCommandData,
@@ -12,6 +13,7 @@ import {
   realAdvisePort,
 } from './discord/commands/advise';
 import { handleHuntCommand, huntCommandData } from './discord/commands/hunt';
+import { handleProfileCommand, profileCommandData } from './discord/commands/profile';
 import { handleWatchCommand, watchCommandData } from './discord/commands/watch';
 import { adviseTurn } from './engine/advisor';
 import { startGateway } from './discord/gateway';
@@ -36,6 +38,7 @@ async function main(): Promise<void> {
   const hunts = makeHuntsRepo(db);
   const listings = makeListingsRepo(db);
   const watches = makeWatchesRepo(db);
+  const profile = makeProfileRepo(db);
   const stale = hunts.resetStaleRunning();
   if (stale > 0) log('boot.resetStaleRunning', { count: stale });
 
@@ -52,6 +55,7 @@ async function main(): Promise<void> {
       { data: huntCommandData, execute: (i) => handleHuntCommand(i, { parseTarget, hunts }) },
       { data: watchCommandData, execute: (i) => handleWatchCommand(i, { parseTarget, watches, hunts }) },
       { data: adviseCommandData, execute: (i) => handleAdviseCommand(realAdvisePort(i), { adviseTurn, hunts }) },
+      { data: profileCommandData, execute: (i) => handleProfileCommand(i, { profile }) },
     ],
     buttons: [
       {
@@ -76,6 +80,7 @@ async function main(): Promise<void> {
         hunts,
         listings,
         watches,
+        profile,
         reporter,
         pace,
       }),

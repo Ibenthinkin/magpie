@@ -7,6 +7,7 @@ import type {
   ListingsRepo,
   NewHuntResult,
   NewListing,
+  ProfileFactRow,
 } from '../../src/db/types';
 import { setGenerateForTests } from '../../src/engine/llm';
 import { runHunt, type HuntDeps, type Reporter } from '../../src/engine/hunt';
@@ -99,6 +100,8 @@ interface Harness {
   /** watch dedup fake: listing ids already hit, and insertHits calls made. */
   seen: Set<string>;
   hitsInserted: { watchId: string; listingIds: string[] }[];
+  /** profile fake: what activeFacts() hands the engine. */
+  facts: ProfileFactRow[];
 }
 
 function makeHarness(adapters: SourceAdapter[]): Harness {
@@ -113,6 +116,7 @@ function makeHarness(adapters: SourceAdapter[]): Harness {
     paced: [],
     seen: new Set(),
     hitsInserted: [],
+    facts: [],
   };
   let n = 0;
   const hunts: HuntsRepo = {
@@ -150,6 +154,7 @@ function makeHarness(adapters: SourceAdapter[]): Harness {
       unseenListingIds: (_watchId, ids) => ids.filter((id) => !h.seen.has(id)),
       insertHits: (watchId, listingIds) => void h.hitsInserted.push({ watchId, listingIds }),
     },
+    profile: { activeFacts: () => h.facts },
   };
   return h;
 }
@@ -314,6 +319,39 @@ describe('runHunt', () => {
       await runHunt(huntRow(), h.deps);
       expect(h.reported[0]!.rankedTitles).toEqual(['Widget 1']);
       expect(h.hitsInserted).toEqual([]);
+    });
+  });
+
+  describe('profile facts (Phase 3)', () => {
+    const couponFact = (value: string): ProfileFactRow => ({
+      id: 'f1',
+      category: 'coupon_source',
+      label: 'eBay coupon',
+      value,
+      active: 1,
+      createdAt: '',
+      updatedAt: '',
+    });
+
+    it('active profile facts discount landed cost and reach the rank prompts', async () => {
+      const captured = { prompts: [] as string[] };
+      fakeRank(captured);
+      const h = makeHarness([fakeAdapter('ebay', [raw(1)])]); // price 1000
+      h.facts.push(couponFact('10% off ebay'));
+      await runHunt(huntRow(), h.deps);
+      expect(h.resultRows[0]!.rows[0]!.landedCostCents).toBe(900);
+      expect(captured.prompts.every((p) => p.includes('Shopper profile facts:'))).toBe(true);
+    });
+
+    it('discounted price can rescue a listing from the hard price ceiling', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [raw(1, { priceCents: 10_500 })])]);
+      h.facts.push(couponFact('10% off ebay'));
+      await runHunt(
+        huntRow({ targetJson: JSON.stringify({ description: 'w', constraints: { maxPriceCents: 10_000 } }) }),
+        h.deps,
+      );
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 1']);
     });
   });
 

@@ -28,15 +28,17 @@ const huntRow = (over: Partial<HuntRow> = {}): HuntRow =>
 
 const target = { description: 'widget 3000', constraints: {} };
 
-const ranked = (n: number): RankedListing => ({
+const ranked = (n: number, over: Partial<RankedListing> = {}): RankedListing => ({
   title: `Widget ${n}`,
   priceCents: n * 1000,
   shippingCents: null,
   condition: 'New',
   url: `https://example.com/item/${n}`,
   landedCents: n * 1000,
+  discountCents: 0,
   matchesTarget: true,
   verdict: `verdict ${n}`,
+  ...over,
 });
 
 function capture() {
@@ -75,6 +77,38 @@ describe('makeDiscordReporter', () => {
     expect(json.title).toMatch(/failed/i);
     expect(json.description).toContain('widget 3000');
     expect(json.description).toContain('bot challenge');
+  });
+
+  it('a card whose landed cost included a membership/coupon discount says so', async () => {
+    const { sent, send } = capture();
+    await makeDiscordReporter(send).results(huntRow(), target, [ranked(1, { discountCents: 250 })], 1);
+    const desc = embedJson(sent[0]!.message.embeds![0]!).description ?? '';
+    expect(desc).toContain('$2.50');
+    expect(desc).toMatch(/discount/i);
+  });
+
+  it('a card with no discount carries no discount line', async () => {
+    const { sent, send } = capture();
+    await makeDiscordReporter(send).results(huntRow(), target, [ranked(1)], 1);
+    expect(embedJson(sent[0]!.message.embeds![0]!).description ?? '').not.toMatch(/discount/i);
+  });
+
+  it('the card footer names the listing source, not a hardcoded eBay', async () => {
+    const { sent, send } = capture();
+    await makeDiscordReporter(send).results(huntRow(), target, [ranked(1, { source: 'fixture' })], 1);
+    expect(embedJson(sent[0]!.message.embeds![0]!).footer?.text).toContain('Fixture');
+  });
+
+  it('an untagged listing still footers as eBay (the only real source today)', async () => {
+    const { sent, send } = capture();
+    await makeDiscordReporter(send).results(huntRow(), target, [ranked(1)], 1);
+    expect(embedJson(sent[0]!.message.embeds![0]!).footer?.text).toContain('eBay');
+  });
+
+  it('the nothing-found card names the sources actually searched', async () => {
+    const { sent, send } = capture();
+    await makeDiscordReporter(send).results(huntRow(), { ...target, sources: ['fixture'] }, [], 0);
+    expect(embedJson(sent[0]!.message.embeds![0]!).description).toContain('Fixture');
   });
 
   it('a send failure propagates (hunt.ts turns it into failHunt, not a silent drop)', async () => {
