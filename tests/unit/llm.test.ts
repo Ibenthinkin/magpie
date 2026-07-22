@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { genObject, genText, setGenerateForTests, withUsage } from '../../src/engine/llm';
+import { extractionModel, genObject, genText, setGenerateForTests, withUsage } from '../../src/engine/llm';
 
 // Per-hunt usage accounting. withUsage() scopes a tally to its async context
 // (AsyncLocalStorage), so the worker's hunt bracket and a command-side
@@ -36,6 +36,33 @@ describe('setGenerateForTests seam', () => {
     });
     await genObject({ schema: shape, prompt: 'the prompt', system: 'sys', label: 'myLabel' });
     expect(seen).toMatchObject({ kind: 'object', label: 'myLabel', system: 'sys', prompt: 'the prompt' });
+  });
+});
+
+describe('extractionModel — the opt-in cheap-extraction lever', () => {
+  const saved = process.env.MAGPIE_EXTRACT_MODEL;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.MAGPIE_EXTRACT_MODEL;
+    else process.env.MAGPIE_EXTRACT_MODEL = saved;
+  });
+
+  it('is off unless MAGPIE_EXTRACT_MODEL names a model — unset and empty both mean "use the default"', () => {
+    delete process.env.MAGPIE_EXTRACT_MODEL;
+    expect(extractionModel()).toBeUndefined();
+    process.env.MAGPIE_EXTRACT_MODEL = '';
+    expect(extractionModel()).toBeUndefined();
+  });
+
+  it('returns the configured model id when set', () => {
+    process.env.MAGPIE_EXTRACT_MODEL = 'anthropic/claude-haiku-4.5';
+    expect(extractionModel()).toBe('anthropic/claude-haiku-4.5');
+  });
+
+  it('is read per call, so flipping the env mid-process takes effect', () => {
+    process.env.MAGPIE_EXTRACT_MODEL = 'a/one';
+    expect(extractionModel()).toBe('a/one');
+    process.env.MAGPIE_EXTRACT_MODEL = 'b/two';
+    expect(extractionModel()).toBe('b/two');
   });
 });
 
