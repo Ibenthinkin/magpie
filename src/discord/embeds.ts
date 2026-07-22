@@ -1,8 +1,9 @@
 import { EmbedBuilder } from 'discord.js';
-import type { WatchRow } from '../db/types';
+import type { ProfileFactRow, WatchRow } from '../db/types';
 import type { AdvisorCandidate } from '../engine/advisor';
 import type { RankedListing } from '../engine/rank';
 import type { TargetSpec } from '../engine/target';
+import { effectiveSourceLabels, sourceLabel } from '../sources/registry';
 
 // Pure embed builders — no client, no IO. Rendering only: everything here reads
 // structured fields off a RankedListing, never raw page text. SPEC §7.2.
@@ -28,9 +29,8 @@ function httpUrl(url: string | null): string | null {
 /**
  * One listing card. `rank` is the 1-based position in the shown results.
  *
- * Phase 1 additions once the extractor captures them: `.setThumbnail(imageUrl)`,
- * real source name in the footer (constant `eBay` while eBay is the only
- * adapter), seller rating and location fields.
+ * Later additions once the extractor captures them: `.setThumbnail(imageUrl)`
+ * and a location field.
  */
 export function buildListingEmbed(listing: RankedListing, rank: number): EmbedBuilder {
   const shipping =
@@ -39,6 +39,9 @@ export function buildListingEmbed(listing: RankedListing, rank: number): EmbedBu
       : '(free/unknown shipping)';
 
   const lines = [`**${usd(listing.landedCents)} landed** ${shipping}`];
+  // The landed figure is already discounted (engine/rank.ts) — say so, or the
+  // number silently disagrees with the listing's own sticker price.
+  if (listing.discountCents > 0) lines.push(`Includes ${usd(listing.discountCents)} membership/coupon discount`);
   if (listing.condition) lines.push(`Condition: ${listing.condition}`);
   lines.push('', listing.verdict);
 
@@ -46,7 +49,8 @@ export function buildListingEmbed(listing: RankedListing, rank: number): EmbedBu
     .setTitle(truncate(listing.title, TITLE_LIMIT))
     .setDescription(lines.join('\n'))
     .setColor(listing.matchesTarget ? MATCH_COLOR : NO_MATCH_COLOR)
-    .setFooter({ text: `eBay · #${rank}` });
+    // Untagged rows predate source tagging; eBay was the only source then.
+    .setFooter({ text: `${sourceLabel(listing.source ?? 'ebay')} · #${rank}` });
 
   const url = httpUrl(listing.url);
   if (url) embed.setURL(url);
@@ -56,9 +60,10 @@ export function buildListingEmbed(listing: RankedListing, rank: number): EmbedBu
 
 /** SPEC §3.1: a hunt always replies — an empty result set gets an explicit card, never silence. */
 export function buildNothingFoundEmbed(target: TargetSpec): EmbedBuilder {
+  const where = effectiveSourceLabels(target.sources).join(', ');
   return new EmbedBuilder()
     .setTitle('No listings found')
-    .setDescription(`Nothing on eBay matched **${target.description}**.`)
+    .setDescription(`Nothing on ${where} matched **${target.description}**.`)
     .setColor(NO_MATCH_COLOR);
 }
 
@@ -106,6 +111,19 @@ export function buildWatchListEmbed(rows: { watch: WatchRow; hits: number }[]): 
     .setDescription(truncate(rows.map(line).join('\n'), DESCRIPTION_LIMIT))
     .setColor(WATCH_COLOR)
     .setFooter({ text: `${rows.length} watch${rows.length === 1 ? '' : 'es'}` });
+}
+
+const PROFILE_COLOR = 0x1abc9c;
+
+/** SPEC §3.4: `/profile list` — one line per active fact (id, category, label, value). */
+export function buildProfileFactsEmbed(facts: ProfileFactRow[]): EmbedBuilder {
+  const line = (f: ProfileFactRow) =>
+    `\`${f.id}\` [${f.category}] **${truncate(f.label, 80)}** — ${truncate(f.value, 200)}`;
+  return new EmbedBuilder()
+    .setTitle('Profile facts')
+    .setDescription(truncate(facts.map(line).join('\n'), DESCRIPTION_LIMIT))
+    .setColor(PROFILE_COLOR)
+    .setFooter({ text: `${facts.length} fact${facts.length === 1 ? '' : 's'}` });
 }
 
 /** SPEC §3.1: a hunt that fails mid-run reports the reason, never silently dies. */

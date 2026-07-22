@@ -47,6 +47,8 @@ export interface RankedListing extends RawListing {
   landedCents: number;
   /** Deterministic membership/coupon discount already inside landedCents (0 = none). */
   discountCents: number;
+  /** Adapter that produced the row, carried through for display; absent on untagged inputs. */
+  source?: string;
   matchesTarget: boolean;
   verdict: string;
 }

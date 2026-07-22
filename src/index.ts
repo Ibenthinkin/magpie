@@ -13,6 +13,7 @@ import {
   realAdvisePort,
 } from './discord/commands/advise';
 import { handleHuntCommand, huntCommandData } from './discord/commands/hunt';
+import { handleProfileCommand, profileCommandData } from './discord/commands/profile';
 import { handleWatchCommand, watchCommandData } from './discord/commands/watch';
 import { adviseTurn } from './engine/advisor';
 import { startGateway } from './discord/gateway';
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
       { data: huntCommandData, execute: (i) => handleHuntCommand(i, { parseTarget, hunts }) },
       { data: watchCommandData, execute: (i) => handleWatchCommand(i, { parseTarget, watches, hunts }) },
       { data: adviseCommandData, execute: (i) => handleAdviseCommand(realAdvisePort(i), { adviseTurn, hunts }) },
+      { data: profileCommandData, execute: (i) => handleProfileCommand(i, { profile }) },
     ],
     buttons: [
       {
