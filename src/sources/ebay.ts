@@ -101,6 +101,10 @@ async function loadResults(page: Page, url: string): Promise<void> {
  */
 export async function fetchResultsText(page: Page, target: TargetSpec): Promise<string> {
   const url = buildSearchUrl(target);
+  // The exact URL is the adapter's whole contract with eBay — log it so a
+  // filter that didn't apply (or a param eBay stopped honouring) is visible
+  // without a debugger.
+  console.log(`[ebay] search ${url}`);
   await loadResults(page, url);
 
   const rows = await page.evaluate(

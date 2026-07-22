@@ -20,6 +20,8 @@ messages. `/brief` reads this. Newest on top.
 - **A place name is never guessed into a zip.** A fabricated centroid would search the *wrong place* — worse than not narrowing. `canAnchorRadius` lives in `target.ts` and is shared by the adapter and the command.
 - **`/hunt` warns at request time** when a radius can't be anchored. A request we're quietly not honouring is the silent-degradation mode the invariants exist to prevent; results that look narrowed but aren't would be worse than the un-narrowed search itself.
 
+**Testing plan written for Ben** — `docs/testing/2026-07-22-live-smoke.md`, a pick-up-cold checklist covering the Phase 3 exit criterion, the geo params, and an optional Haiku extraction A/B (~15 min, ~50¢). Writing it surfaced a real gap: **the eBay search URL was never logged**, so there was no way to see whether `_stpos`/`_sadis` had actually been applied — added `[ebay] search <url>` at the search step, which is the adapter's whole contract with eBay and useful well beyond tonight. The plan is explicit that params-present-but-locations-nationwide means eBay is ignoring them (probably wants `LH_PrefLoc` too), since that failure looks identical to success from the Discord side.
+
 **Open / next:** the `_stpos`/`_sadis` behavior is **live-unverified** — param names are confirmed from docs but the actual narrowing needs one real eBay run, ideally alongside the Phase 3 smoke. Then the genuinely risky Phase 4 work (Marketplace/Craigslist adapters, detection mitigations) and the still-unwritten Dockerfile/compose (couldn't be built here — no Docker on this machine).
 
 **Shipped** (branch `phase-3-profile`, tasks 6–9 of the plan; suite green at each step — typecheck clean, **141 vitest, 21 bun-db, 7 bun-e2e**):
