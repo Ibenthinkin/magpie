@@ -126,3 +126,22 @@ describe('rankListings with profile facts', () => {
     expect(captured.prompts.every((p) => !p.includes('Shopper profile facts'))).toBe(true);
   });
 });
+
+describe('rankListings — seller rating', () => {
+  const target = { description: 'widget', constraints: {} };
+
+  it('shows the seller rating on the listing line and licenses the verdict to cite it', async () => {
+    const captured = { prompts: [] as string[], systems: [] as string[] };
+    fakeRank(captured);
+    await rankListings([{ ...listing('A', 1000), sellerRating: 99.4 }], target);
+    for (const p of captured.prompts) expect(p).toContain('seller: 99.4%');
+    expect(captured.systems.some((s) => /seller rating/i.test(s))).toBe(true);
+  });
+
+  it('omits the field entirely when no rating was extracted', async () => {
+    const captured = { prompts: [] as string[], systems: [] as string[] };
+    fakeRank(captured);
+    await rankListings([listing('A', 1000), { ...listing('B', 2000), sellerRating: null }], target);
+    for (const p of captured.prompts) expect(p).not.toContain('seller:');
+  });
+});

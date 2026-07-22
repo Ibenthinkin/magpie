@@ -18,6 +18,10 @@ const looseRowSchema = z.object({
     .string()
     .nullable()
     .describe('copy the URL verbatim from the row\'s "URL:" line; null if the row has none. Never construct one'),
+  sellerRating: z
+    .number()
+    .nullable()
+    .describe('seller rating as shown — eBay feedback percent like 99.4 — or null if the row has none'),
 });
 const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 

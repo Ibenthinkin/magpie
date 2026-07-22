@@ -43,6 +43,7 @@ export function buildListingEmbed(listing: RankedListing, rank: number): EmbedBu
   // number silently disagrees with the listing's own sticker price.
   if (listing.discountCents > 0) lines.push(`Includes ${usd(listing.discountCents)} membership/coupon discount`);
   if (listing.condition) lines.push(`Condition: ${listing.condition}`);
+  if (listing.sellerRating != null) lines.push(`Seller: ${listing.sellerRating}%`);
   lines.push('', listing.verdict);
 
   const embed = new EmbedBuilder()
