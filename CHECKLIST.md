@@ -122,7 +122,7 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 > Goal: Facebook Marketplace / Craigslist with account-ban risk respected. The big risk — proceed deliberately.
 
 - [ ] Harden `pacing.ts` — strict per-source rate caps, conservative human-like delays for marketplaces.
-- [ ] Geo-local constraint handling — `TargetSpec.constraints.location` (`near` / `maxMiles`) end-to-end.
+- [x] Geo-local constraint handling — `TargetSpec.constraints.location` (`near` / `maxMiles`) end-to-end. *Narrowed at the source (eBay `_stpos`/`_sadis`, radius snapped up to eBay's ladder); location extracted, ranked and shown. We deliberately never compute distance ourselves — no geocoder, so no fake math. Zip-anchored only; `/hunt` warns on a place name. **Live-unverified**: the `_stpos`/`_sadis` behavior needs one real eBay run.*
 - [ ] `src/sources/craigslist.ts` and/or `src/sources/facebook.ts` — guided adapters; consider a dedicated account for Marketplace.
 - [ ] Vision/screenshot fallback path wired for what the guided path can't reach (fallback only, not happy path).
 - [ ] Detection mitigations as needed — `channel:'chrome'` real install and/or headed-in-xvfb (decided empirically; see SPEC §15).

@@ -7,6 +7,21 @@ messages. `/brief` reads this. Newest on top.
 
 ### [[07-22-26 Wed]] — Phase 3 lands: `/profile`, seller rating, SPEC caught up
 
+*(Later the same day — Phase 3 pushed to `main` by Ben; live smoke deferred, so picked up the one Phase 4 item that needs no live testing. Branch `phase-4-geo`, suite **154 vitest · 21 bun-db · 7 bun-e2e**, typecheck clean.)*
+
+**Shipped — geo-local constraints, end to end:**
+- **Found dead code that had been live since Phase 1**: `constraints.location` (`near`/`maxMiles`) was parsed into every `TargetSpec` and read by *nothing* — `applyConstraints` destructured only price and condition, `RawListing` had no location field, and `ebay.ts` hardcoded `location: null`. Asking for "within 20 miles" silently searched everywhere.
+- **Narrowing now happens at the source**, where it can be exact: `buildSearchUrl` sets eBay's `_stpos` (zip) + `_sadis` (radius) so eBay computes distance server-side. Verified the param names by search rather than guessing — a wrong param is a silent no-op, the exact failure this repo forbids.
+- **`_sadis` only honours a fixed ladder** (10/25/50/100/200/500/1000), so a requested radius **snaps up** to the next rung. Up, never down: a superset is safe, narrowing tighter than asked would hide real matches — same instinct as the filter's "ties go to keeping the listing".
+- **Location extracted, ranked and shown** — optional-nullable through `RawListing`, into both rank prompts and onto the card, same pattern as seller rating.
+
+**Decisions:**
+- **We do not compute distance, on purpose.** Deciding "San Jose, CA" is outside 20 miles of Oakland needs geocoding, and Magpie's whole network posture is Discord + OpenRouter + retail sites. Adding a geo service to *hard-drop* listings would trade a load-bearing constraint for a guess. So: narrow at the source, surface the location, let the verdict judge it — and the prompt explicitly tells the model to say it's unsure rather than invent a distance. Pinned with a test (`never drops a listing on location`) so nobody later "fixes" it into fake math. Same shape as the Phase 3 discount rule: machine-apply only what's arithmetically defensible.
+- **A place name is never guessed into a zip.** A fabricated centroid would search the *wrong place* — worse than not narrowing. `canAnchorRadius` lives in `target.ts` and is shared by the adapter and the command.
+- **`/hunt` warns at request time** when a radius can't be anchored. A request we're quietly not honouring is the silent-degradation mode the invariants exist to prevent; results that look narrowed but aren't would be worse than the un-narrowed search itself.
+
+**Open / next:** the `_stpos`/`_sadis` behavior is **live-unverified** — param names are confirmed from docs but the actual narrowing needs one real eBay run, ideally alongside the Phase 3 smoke. Then the genuinely risky Phase 4 work (Marketplace/Craigslist adapters, detection mitigations) and the still-unwritten Dockerfile/compose (couldn't be built here — no Docker on this machine).
+
 **Shipped** (branch `phase-3-profile`, tasks 6–9 of the plan; suite green at each step — typecheck clean, **141 vitest, 21 bun-db, 7 bun-e2e**):
 - **`/profile add|list|remove`** (`src/discord/commands/profile.ts`) — the missing user-facing half. Until now the discount machinery from tasks 1–5 was unreachable: there was no way to get a fact into the database. No LLM in this path; facts are stored verbatim. `remove` is soft and deliberately reports **not-found for an already-removed fact** rather than confirming a second removal, so the reply can never disagree with `/profile list`.
 - **Listing cards tell the truth about the number they show** — a card whose landed cost was discounted now says so (`Includes $X membership/coupon discount`), and the footer names the listing's **actual source** instead of a hardcoded `eBay`. `sourceLabel`/`effectiveSourceLabels` live in `sources/registry.ts` so a Phase 4 adapter adds its display name beside its registration.
