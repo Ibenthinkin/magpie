@@ -107,15 +107,15 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 
 > Goal: memberships/coupons/specs consulted on every hunt; landed-cost refinements.
 
-- [ ] `src/db/profile.ts` — `activeFacts()` + CRUD over `profile_fact`.
-- [ ] `src/discord/commands/profile.ts` — `add` (`category` ∈ membership|coupon_source|spec, `label`, `value`), `list`, `remove`.
-- [ ] Feed all active facts into `rankListings`; verdict must mention when a membership/coupon changed the ranking.
-- [ ] `landedCost` refinements — deterministic membership/coupon discounts, condition + seller-rating adjustment, price-after-coupons.
-- [ ] Scope "best deal" depth (SPEC §15 open question): how far coupon/promo hunting goes beyond stored memberships — decide and document in SPEC.
-- [ ] Tests: `landedCost` membership/coupon cases; verdict mentions discount impact.
+- [x] `src/db/profile.ts` — `activeFacts()` + CRUD over `profile_fact`.
+- [x] `src/discord/commands/profile.ts` — `add` (`category` ∈ membership|coupon_source|spec, `label`, `value`), `list`, `remove`.
+- [x] Feed all active facts into `rankListings`; verdict must mention when a membership/coupon changed the ranking.
+- [x] `landedCost` refinements — deterministic membership/coupon discounts, condition + seller-rating adjustment, price-after-coupons. *Condition and seller rating are verdict-layer judgment, not cost math (SPEC §6.5); seller rating is now extracted and shown.*
+- [x] Scope "best deal" depth (SPEC §15 open question): how far coupon/promo hunting goes beyond stored memberships — decide and document in SPEC. *Answer: stored source-scoped facts only, no coupon hunting — rule in SPEC §6.5, bullet resolved in §15.*
+- [x] Tests: `landedCost` membership/coupon cases; verdict mentions discount impact.
 
 ### Exit criteria
-- [ ] A hunt with an active membership fact ranks a discounted listing correctly and the verdict cites the membership.
+- [ ] A hunt with an active membership fact ranks a discounted listing correctly and the verdict cites the membership. *Proven offline end to end (`tests/bun/e2e/hunt-e2e.test.ts`); awaiting the live Discord smoke.*
 
 ## Phase 4 — Hard sources (carefully)
 

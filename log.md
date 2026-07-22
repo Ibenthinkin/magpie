@@ -5,6 +5,22 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-22-26 Wed]] — Phase 3 lands: `/profile`, seller rating, SPEC caught up
+
+**Shipped** (branch `phase-3-profile`, tasks 6–9 of the plan; suite green at each step — typecheck clean, **141 vitest, 21 bun-db, 7 bun-e2e**):
+- **`/profile add|list|remove`** (`src/discord/commands/profile.ts`) — the missing user-facing half. Until now the discount machinery from tasks 1–5 was unreachable: there was no way to get a fact into the database. No LLM in this path; facts are stored verbatim. `remove` is soft and deliberately reports **not-found for an already-removed fact** rather than confirming a second removal, so the reply can never disagree with `/profile list`.
+- **Listing cards tell the truth about the number they show** — a card whose landed cost was discounted now says so (`Includes $X membership/coupon discount`), and the footer names the listing's **actual source** instead of a hardcoded `eBay`. `sourceLabel`/`effectiveSourceLabels` live in `sources/registry.ts` so a Phase 4 adapter adds its display name beside its registration.
+- **Seller rating extracted end to end** — optional-nullable on `rawListingSchema` (old fixtures stay valid), asked for in the extraction schema, carried by both adapters, shown on the rank line and the card. Per SPEC §6.5 it is **verdict-layer judgment, never cost math**.
+- **E2E through the real queue** — a `coupon_source` fact naming the fixture source discounts every persisted `hunt_result`. Mutation-checked: deleting the `addFact` line fails the test, so it isn't vacuous.
+
+**Decisions:**
+- **The "best deal" open question (SPEC §15) is resolved as a deliberate "no".** Magpie applies discounts *only* from stored facts, and only when the fact names the source; it does not go hunting for coupons. Anything the owner can't state as a source-scoped fact stays LLM narration on top of honest arithmetic. Written into SPEC §6.5 as the rule, with the §15 bullet struck through — it had been sitting as *"scoped in Phase 3"* with the actual rule living only in a code comment.
+- **The extraction cost lever ships opt-in and default-off.** `MAGPIE_EXTRACT_MODEL` routes only the extraction pass to a cheaper model (`genObject`/`genText` now take a per-call model; `llm.ts` caches one model per id and the `[llm]` line reports which was used). Unset = today's behavior exactly. Deliberate: extraction quality on a cheap model is unvalidated, and this codebase's whole posture is that a regression should be loud, not silent — so the switch waits for a smoke test rather than defaulting on and quietly degrading hunts.
+- **`CHECKLIST.md`'s "condition + seller-rating adjustment" resolved toward the LLM**, not deterministic math — SPEC §6.5 is explicit that those are verdict judgment. Money math stays limited to figures defensible arithmetically.
+- Also caught SPEC up on the **Phase 1 `test:e2e` amendment** (owed since 07-16): the spec still claimed `playwright test`, which can never work because it runs under Node where `bun:sqlite` doesn't exist.
+
+**Open / next:** **live Discord smoke is the only thing standing between Phase 3 and its exit criterion** — `/profile add|list|remove`, then a hunt where a coupon fact visibly moves the ranking and the verdict cites it. After that, `git push origin main` (Ben — classifier-blocked for Claude). Then Phase 4 (hard sources), where the source-aware footer and per-source pacing start earning their keep. `MAGPIE_EXTRACT_MODEL` is worth an A/B on a real eBay page once someone's watching.
+
 ### [[07-19-26 Sun]] — Phase 2 merged to main; branch protection removed
 
 **Shipped:**
