@@ -6,7 +6,7 @@ import type { TargetSpec } from '../engine/target';
 // knows its source's search-URL pattern and walks results deterministically;
 // the LLM extracts, it never navigates, on the happy path.
 
-export type SourceId = 'ebay' | 'fixture';
+export type SourceId = 'ebay' | 'craigslist' | 'fixture';
 
 // Strict shape a usable extracted row must satisfy (validated locally, never
 // sent to the LLM, so bound keywords are fine here).

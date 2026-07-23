@@ -1,9 +1,11 @@
+import { craigslistAdapter } from './craigslist';
 import { ebayAdapter } from './ebay';
 import { fixtureAdapter } from './fixture';
 import type { SourceAdapter, SourceId } from './types';
 
 export const registry: Record<SourceId, SourceAdapter> = {
   ebay: ebayAdapter,
+  craigslist: craigslistAdapter,
   fixture: fixtureAdapter,
 };
 
@@ -13,7 +15,7 @@ export const DEFAULT_SOURCES: SourceId[] = ['ebay'];
 
 // Human-facing source names for embeds. A new adapter adds its label here
 // alongside its registry entry.
-const LABELS: Record<SourceId, string> = { ebay: 'eBay', fixture: 'Fixture' };
+const LABELS: Record<SourceId, string> = { ebay: 'eBay', craigslist: 'Craigslist', fixture: 'Fixture' };
 
 /** Display name for a source id; an unrecognized id renders as-is, never throws. */
 export function sourceLabel(id: string): string {

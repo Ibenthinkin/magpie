@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { buildSearchUrl as clUrl, craigslistAdapter } from '../../src/sources/craigslist';
 import { buildSearchUrl, ebayAdapter } from '../../src/sources/ebay';
 import { makeFixtureAdapter } from '../../src/sources/fixture';
 import { resolveAdapters } from '../../src/sources/registry';
@@ -110,6 +111,73 @@ describe('ebay toListing', () => {
   });
 });
 
+describe('craigslist buildSearchUrl', () => {
+  const t = (over: Partial<{ constraints: object }> = {}) => ({
+    description: 'mx master 3s',
+    constraints: {},
+    ...over,
+  });
+
+  test('region becomes the subdomain; query + cheapest-first sort', () => {
+    const url = new URL(clUrl(t(), 'sfbay'));
+    expect(url.host).toBe('sfbay.craigslist.org');
+    expect(url.pathname).toBe('/search/sss');
+    expect(url.searchParams.get('query')).toBe('mx master 3s');
+    expect(url.searchParams.get('sort')).toBe('priceasc');
+  });
+
+  test('a US zip becomes postal + an EXACT search_distance (no ladder snapping)', () => {
+    const url = new URL(clUrl(t({ constraints: { location: { near: '94601', maxMiles: 23 } } }), 'sfbay'));
+    expect(url.searchParams.get('postal')).toBe('94601');
+    // eBay would snap 23 up to 25; Craigslist takes the exact radius.
+    expect(url.searchParams.get('search_distance')).toBe('23');
+  });
+
+  test('a zip with no radius still anchors postal; a place name sets neither', () => {
+    const anchored = new URL(clUrl(t({ constraints: { location: { near: '94601' } } }), 'sfbay'));
+    expect(anchored.searchParams.get('postal')).toBe('94601');
+    expect(anchored.searchParams.get('search_distance')).toBeNull();
+    const place = new URL(clUrl(t({ constraints: { location: { near: 'Oakland, CA', maxMiles: 20 } } }), 'sfbay'));
+    expect(place.searchParams.get('postal')).toBeNull();
+    expect(place.searchParams.get('search_distance')).toBeNull();
+  });
+
+  test('max price as whole dollars; condition only for new', () => {
+    const url = new URL(clUrl(t({ constraints: { maxPriceCents: 6050, conditions: ['new'] } }), 'sfbay'));
+    expect(url.searchParams.get('max_price')).toBe('61');
+    expect(url.searchParams.get('condition')).toBe('10');
+    const used = new URL(clUrl(t({ constraints: { conditions: ['used'] } }), 'sfbay'));
+    expect(used.searchParams.get('condition')).toBeNull();
+  });
+
+  test('no region throws — we never guess a zip into a region', () => {
+    expect(() => clUrl(t(), '')).toThrow(/CRAIGSLIST_REGION/);
+  });
+});
+
+describe('craigslist toListing', () => {
+  const clRaw = (over: Partial<RawListing> = {}): RawListing =>
+    raw({ url: 'https://sfbay.craigslist.org/eby/ele/d/oakland-logitech-mx-master/7712345678.html', ...over });
+
+  test('derives source_id from the numeric post id', () => {
+    const l = craigslistAdapter.toListing(clRaw());
+    expect(l).toMatchObject({ source: 'craigslist', sourceId: '7712345678', currency: 'USD' });
+  });
+
+  test('rejects a foreign host or a URL with no post id', () => {
+    expect(craigslistAdapter.toListing(clRaw({ url: null }))).toBeNull();
+    expect(craigslistAdapter.toListing(clRaw({ url: 'https://evil.example/d/x/7712345678.html' }))).toBeNull();
+    expect(
+      craigslistAdapter.toListing(clRaw({ url: 'https://sfbay.craigslist.org/eby/ele/d/x/index.html' })),
+    ).toBeNull();
+  });
+
+  test('carries item location and seller rating through', () => {
+    expect(craigslistAdapter.toListing(clRaw({ location: 'Oakland' }))!.location).toBe('Oakland');
+    expect(craigslistAdapter.toListing(clRaw({ sellerRating: null }))!.sellerRating).toBeNull();
+  });
+});
+
 describe('fixture toListing', () => {
   test('derives source_id from the fixture item path', () => {
     const adapter = makeFixtureAdapter('http://127.0.0.1:1234');
@@ -133,6 +201,11 @@ describe('registry', () => {
   test('defaults to the enabled live sources (fixture is opt-in only)', () => {
     expect(resolveAdapters(undefined).map((a) => a.source)).toEqual(['ebay']);
     expect(resolveAdapters([]).map((a) => a.source)).toEqual(['ebay']);
+  });
+
+  test('craigslist is resolvable when named but never a default', () => {
+    expect(resolveAdapters(undefined).map((a) => a.source)).toEqual(['ebay']);
+    expect(resolveAdapters(['craigslist']).map((a) => a.source)).toEqual(['craigslist']);
   });
 
   test('resolves named sources, skipping unknown ids', () => {
