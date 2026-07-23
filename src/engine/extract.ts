@@ -25,7 +25,11 @@ const looseRowSchema = z.object({
   location: z
     .string()
     .nullable()
-    .describe('item location exactly as shown, e.g. "San Jose, CA" or "United Kingdom"; null if absent'),
+    .describe(
+      'the most useful location signal in the row: PREFER a distance like "25 mi from 19147" ' +
+        'when present — it is the marketplace\'s own computed distance from the buyer, not a guess — ' +
+        'otherwise the item location text as shown, e.g. "San Jose, CA" or "United Kingdom". null if absent',
+    ),
 });
 const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 

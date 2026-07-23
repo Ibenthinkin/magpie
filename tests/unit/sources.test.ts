@@ -34,6 +34,19 @@ describe('ebay buildSearchUrl', () => {
     expect(url.searchParams.get('_sadis')).toBe('25');
   });
 
+  test('an anchored radius engages the local-pickup filter (the only radius filter eBay honours)', () => {
+    // _stpos + _sadis alone only PRE-FILL the option; verified live 2026-07-23 that
+    // the result set is byte-identical with and without them. eBay's real "within N
+    // miles" filter is local-pickup-only — LH_LPickup=1 (+ LH_PrefLoc=99, _fspt=1) is
+    // what actually narrows and makes eBay render per-item "N mi from <zip>" distances.
+    const url = new URL(
+      buildSearchUrl({ description: 'x', constraints: { location: { near: '94601', maxMiles: 20 } } }),
+    );
+    expect(url.searchParams.get('LH_LPickup')).toBe('1');
+    expect(url.searchParams.get('LH_PrefLoc')).toBe('99');
+    expect(url.searchParams.get('_fspt')).toBe('1');
+  });
+
   test('radius snaps up to the nearest eBay-supported distance and clamps at the maximum', () => {
     const radius = (maxMiles: number) =>
       new URL(buildSearchUrl({ description: 'x', constraints: { location: { near: '94601', maxMiles } } }))
@@ -48,6 +61,9 @@ describe('ebay buildSearchUrl', () => {
     const anchored = new URL(buildSearchUrl({ description: 'x', constraints: { location: { near: '94601' } } }));
     expect(anchored.searchParams.get('_stpos')).toBe('94601');
     expect(anchored.searchParams.get('_sadis')).toBeNull();
+    // No radius ⇒ no narrowing: _stpos alone only sets eBay's ship-to context (useful
+    // for shipping-cost estimates); the local-pickup filter must NOT be forced on.
+    expect(anchored.searchParams.get('LH_LPickup')).toBeNull();
 
     const orphan = new URL(buildSearchUrl({ description: 'x', constraints: { location: { maxMiles: 25 } } }));
     expect(orphan.searchParams.get('_sadis')).toBeNull();

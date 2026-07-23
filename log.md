@@ -5,6 +5,33 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-23-26 Thu]] — Live smoke: Phase 3 exit criterion met against real eBay
+
+Walking Ben through `docs/testing/2026-07-22-live-smoke.md`.
+
+**Findings so far:**
+- **Boot clean** — `commands=4`, `Magpie#8183`, `[boot.ready] headless=true`, no allowlist warning. A pre-existing `/watch` (Casio A500W) came due and fired on boot: `[scheduler.tick] enqueued=1` → full hunt, extracted 60/60, `shown=4`, ~$0.099. **Mode B proven live, unprompted**, before the scripted tests even started.
+- **`/profile` CRUD** — add / list / bogus-remove all as specified.
+- **Phase 3 exit criterion ✅ (the ⭐ one).** `/hunt logitech mx master 3s max_price:70` with an active `coupon_source` fact: discount line, ~10%-below-sticker landed price, verdict cites the coupon, footer `eBay · #1`. Removed the fact, re-ran: same listings, no discount, sticker prices. **Proven both directions.** Ticked `CHECKLIST.md` Phase-3 exit criterion.
+- **Extraction cost holding at real prices** — Sonnet extraction ~$0.077, rank ~$0.018 + ~$0.004 per hunt (in line with the ~16¢ Phase-1 baseline).
+
+**Geo narrowing — the live smoke earned its keep (found + fixed a real bug).**
+- **`_stpos`/`_sadis` alone were a silent no-op.** parseTarget + buildSearchUrl emit them correctly (confirmed: `…&_stpos=19147&_sadis=25`), but the result set was *byte-identical* with and without them — same "3,700+ results", same items, same order. Proven by loading both URLs in-browser and diffing. This is exactly the silent-degradation the invariants exist to catch, and exactly why this step needed live eyes.
+- **Root cause, via eBay's own UI:** `_stpos`/`_sadis` only *pre-fill* eBay's location option; nothing filters until you tick "Local Pickup within N mi", which the UI emits as **`LH_LPickup=1` (+ `LH_PrefLoc=99`, `_fspt=1`)**. eBay has **no ship-inclusive radius filter** — radius is inseparable from local pickup.
+- **Fix (Ben's call):** an anchored radius now adds `LH_LPickup=1&LH_PrefLoc=99&_fspt=1`. Narrows for real (**3,700+ → 59**) and eBay then renders per-item **"N mi from <zip>"** distances (a far better signal than the country-only "Located in United States" that search results otherwise expose). **Semantics Ben chose:** honoring "within N miles" = **local-pickup only**, ship-only listings excluded — the honest reading of "near me". Zip-only (no radius) still just sets ship-to context, no forced pickup filter.
+- Verified in-browser against the *exact* URL `buildSearchUrl` emits. New URL-contract test pins `LH_LPickup`.
+
+**Then test 4a surfaced two DEEPER bugs — both ours, both now fixed (Ben: "fix both now").** Enabling the filter revealed the first live hunt still ranked a *Santa Clarita* pickup desk (~2,390 mi from 19147) at #1 with "location unclear". Inspecting the real page (`get_page_text`) explained why:
+- **Bug A — we threw away the distance.** Every card's innerText carries eBay's own **"N mi from 19147"**, but extraction captured the coarse "Located in United States" instead, leaving the ranker blind ("distance unclear"). Fix: `extract.ts` `location` field now *prefers* the "N mi from <zip>" distance when present — it's eBay's computed number, not a guess, so it stays inside the never-geocode rule.
+- **Bug B — we ingested eBay's out-of-radius padding.** eBay stacks the genuine in-radius results, then pads with **"Results matching fewer words"** and **"<N> items found from eBay international sellers"** sections whose cards run to 4,885 mi. `fetchResultsText` was scraping every card on the page. Fix: extracted the DOM reduction into `reduceResultsText(page)` (mirrors craigslist.ts) and it now drops everything from the first padding heading onward (`RESULT_BOUNDARIES`, document-order via `compareDocumentPosition`).
+- Pinned by a new bun e2e (`tests/bun/e2e/ebay-fetch.test.ts` + `tests/fixtures/ebay/`) built from the real 2026-07-23 page: keeps the 3 in-radius cards, preserves "N mi", drops Santa Clarita / the international + fewer-words sections, fails loud on an empty page. Suite now **164 vitest · 34 bun**, typecheck clean.
+
+**Live-confirmed on the restarted (signed-in) process ✅** — re-ran `/hunt standing desk near 19147 within 25 miles`: cards now show the distance ("N mi from <zip>") on the Location line, no cross-country items. Geo narrowing works end to end. **Test 4 fully green** (4a fixed + confirmed; 4b radius 20→25 snap ✓; 4c Oakland place-name warning + no params ✓).
+
+**Open / next:**
+- **DEFERRED — cheap-extraction A/B (smoke doc §5).** Biggest cost lever: extraction was ~$0.118 of a ~$0.157 hunt. Re-run a known hunt with `MAGPIE_EXTRACT_MODEL=anthropic/claude-haiku-4.5` and compare row count / dropped-row warnings / quality / `usd=` against the Sonnet baseline. Keep only if row count and quality hold; unset = today's behavior. Ships off by design — a cheap model quietly mangling extraction is worse than a few extra cents.
+- Cleanup is effectively moot: the test coupon fact was already removed in test 3, and the smoke created no watches. The pre-existing Casio A500W `/watch` (fired on boot) is real, not test debris — Ben to decide whether to keep it.
+
 ### [[07-22-26 Wed]] — Phase 3 lands: `/profile`, seller rating, SPEC caught up
 
 *(Later the same day — Phase 3 pushed to `main` by Ben; live smoke deferred, so picked up the one Phase 4 item that needs no live testing. Branch `phase-4-geo`, suite **154 vitest · 21 bun-db · 7 bun-e2e**, typecheck clean.)*
