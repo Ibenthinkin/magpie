@@ -123,10 +123,10 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 
 - [ ] Harden `pacing.ts` — strict per-source rate caps, conservative human-like delays for marketplaces.
 - [x] Geo-local constraint handling — `TargetSpec.constraints.location` (`near` / `maxMiles`) end-to-end. *Narrowed at the source (eBay `_stpos`/`_sadis`, radius snapped up to eBay's ladder); location extracted, ranked and shown. We deliberately never compute distance ourselves — no geocoder, so no fake math. Zip-anchored only; `/hunt` warns on a place name. **Live-unverified**: the `_stpos`/`_sadis` behavior needs one real eBay run.*
-- [ ] `src/sources/craigslist.ts` and/or `src/sources/facebook.ts` — guided adapters; consider a dedicated account for Marketplace.
+- [~] `src/sources/craigslist.ts` and/or `src/sources/facebook.ts` — guided adapters; consider a dedicated account for Marketplace. *Craigslist done (mirrors `ebay.ts`): geo-aware `buildSearchUrl` (`postal` + **exact** `search_distance`, no ladder), LLM extraction via the shared path, `toListing` guarded on a craigslist.org post id, conservative pacing. **Opt-in** (`sources:craigslist`) — kept out of `DEFAULT_SOURCES` until live-smoked, since result selectors are live-unverified. No login/account → no ban risk. Facebook Marketplace still open — deferred to a session Ben runs (account-ban risk, needs live testing).*
 - [ ] Vision/screenshot fallback path wired for what the guided path can't reach (fallback only, not happy path).
 - [ ] Detection mitigations as needed — `channel:'chrome'` real install and/or headed-in-xvfb (decided empirically; see SPEC §15).
-- [ ] Fixtures + tests for the new adapters' `toListing`.
+- [x] Fixtures + tests for the new adapters' `toListing`. *Craigslist: unit tests for `buildSearchUrl` + `toListing`, plus a bun e2e reducing a hand-authored Craigslist-shaped fixture through real Playwright (`reduceResultsText`), no LLM. Suite: 163 vitest · 21 bun-db · 9 bun-e2e.*
 
 ### Exit criteria
 - [ ] At least one hard source returns listings on the owner's logged-in account without triggering a block during measured, rate-capped use.

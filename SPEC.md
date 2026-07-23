@@ -332,6 +332,7 @@ One hunt, end to end (`src/engine/hunt.ts`):
 | `MAGPIE_DB_PATH` | SQLite file (default `data/magpie.db`) |
 | `BROWSER_PROFILE_DIR` | persistent Chromium profile (default `browser-profile/`) |
 | `HEADLESS` | `false` for login/debug sessions |
+| `CRAIGSLIST_REGION` | *optional* — region subdomain (e.g. `sfbay`) for the opt-in craigslist source; Craigslist has no national search |
 
 ## 11. Security considerations
 
