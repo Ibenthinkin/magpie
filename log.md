@@ -5,7 +5,49 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
-### [[07-24-26 Fri]] — `phase-4-geo` merged to main
+### [[07-24-26 Fri]] — `phase-4-geo` merged to main; Craigslist taken live (four bugs)
+
+**Shipped — Craigslist live-verified, and the pre-live guess was wrong in four ways.** Ben
+pushed the merge, then asked to take Craigslist live. Rather than spend a Discord hunt to find
+out, probed the real site with throwaway Playwright scripts first (no LLM, no Discord) — cheap
+enough to iterate, and it turned a single pass/fail into four separate findings.
+
+- **The card is a `DIV`, not an `LI`.** `li.cl-search-result` matched **0 of 24** live cards.
+  Selectors are tag-agnostic now (`.cl-search-result, .cl-static-search-result`). *Lesson worth
+  keeping: name the class, not the tag — the element type is the site's business.*
+- **Post URLs no longer end in `<pid>.html`.** Craigslist serves
+  `https://www.craigslist.org/view/d/<slug>/<token>`. The guarded `POST_URL` regex accepted only
+  the legacy form, so **every extracted row would have been dropped by `toListing`** — extraction
+  logging a happy `kept 22/22` and the hunt returning nothing. The quietest failure of the four,
+  and the reason the guard exists. Both shapes accepted now; the token is safe as a dedup key
+  (**24/24 identical across two loads**, and the post page's own "post id" matches the card's
+  `data-pid`, so it's a permalink, not a session handle).
+- **`waitForSelector('attached')` was reading a skeleton.** Sampling the page every 500ms showed
+  craigslist ships pre-hydration markup whose cards have no anchors and no text; `attached`
+  resolved on it at **~200ms**, the app destroyed it (**~700ms, zero cards**), and the real list
+  mounted at **~1200ms**. The adapter was reading a full second early. Now waits on the actual
+  precondition — a card with both a posting link and rendered text — which needs no
+  craigslist-internal class name and self-corrects if they retime hydration. *My first probe
+  masked this with a `waitForTimeout(6000)`; the bug only surfaced when I ran the real
+  `search()`. A fixed sleep in a probe is a lie detector you've disabled.*
+- **`sort=priceasc` was actively harmful.** Copied from eBay's `_sop=15`, but craigslist's
+  `query` matches post *body* text loosely, so cheapest-first floats free junk: **4/10 relevant**
+  in the top ten ("Curb alert!", a patriotic shadow box, three duplicate elliptical pedals)
+  vs **10/10** real desks on the default relevance sort. Dropped it. The reasoning generalises —
+  `rankListings` re-sorts by landed cost regardless, so a source-side sort only decides *which
+  candidates we pay to extract*, and there relevance is the entire job. eBay gets away with
+  `_sop=15` because its query matching is tight.
+- Also stripped the gallery swipe dots (14 bare `•` per card) from the reduced text — pure token
+  waste in every extraction prompt.
+- **Full live path then proven end to end:** 12/12 rows extracted, **12 kept / 0 dropped**, real
+  per-item locations, **$0.033** extraction (cheaper than eBay's ~$0.077 — fewer, shorter cards).
+  Fail-loud on an unset `CRAIGSLIST_REGION` also confirmed live, by accident, which was pleasant.
+- Fixture rebuilt from the real DOM shape (replacing the hand-authored guess) and the e2e widened
+  to pin all four fixes. Suite **166 vitest · 21 bun-db · 16 bun-e2e**, typecheck clean.
+
+**Decisions:** Craigslist stays **opt-in** for now — promoting it into `DEFAULT_SOURCES` needs
+`CRAIGSLIST_REGION` set in Ben's `.env` (it isn't, and `buildSearchUrl` throws loud by design),
+and the region is his call. `philadelphia` is the obvious one given the 19147 anchor.
 
 **Shipped:** merged `phase-4-geo` → `main` (local `--no-ff`, the Phase 3 pattern). Seven commits:
 geo-local constraints end to end, the eBay `LH_LPickup` radius fix and the two extraction bugs the
@@ -15,10 +57,10 @@ before merging and on merged main: typecheck clean, **164 vitest · 21 bun-db ·
 Also corrected a stale `CHECKLIST.md` note that still called the geo live re-confirm "pending" —
 it passed on 07-23 and the log already said so.
 
-**Open / next:** `git push origin main` (Ben — classifier-blocked for Claude). Then the two things
-this branch deliberately left unverified: a real `sources:craigslist` hunt to confirm the
-best-guess selectors (promotes it into `DEFAULT_SOURCES`), and the deferred Haiku extraction A/B.
-Facebook Marketplace remains the account-ban-risk item that wants Ben present.
+**Open / next:** decide whether Craigslist joins `DEFAULT_SOURCES` (needs `CRAIGSLIST_REGION` in
+`.env` first), and a Discord-side `/hunt … sources:craigslist` to see the cards render — the
+adapter contract is proven, the embed path for a second source isn't. Then the deferred Haiku
+extraction A/B. Facebook Marketplace remains the account-ban-risk item that wants Ben present.
 
 ### [[07-23-26 Thu]] — Live smoke: Phase 3 exit criterion met against real eBay
 
