@@ -18,7 +18,14 @@ export function buildSearchUrl(target: TargetSpec, region: string): string {
   }
   const p = new URLSearchParams();
   p.set('query', target.description);
-  p.set('sort', 'priceasc'); // cheapest first, matching eBay's _sop=15
+  // NO source-side price sort, deliberately — the opposite of ebay.ts's _sop=15.
+  // Craigslist's `query` matches post body text loosely, so sort=priceasc floats free
+  // junk that merely mentions the words: measured live 2026-07-24 on "standing desk",
+  // priceasc gave 4/10 relevant in the top ten ("Curb alert!", a shadow box, three
+  // duplicate elliptical pedals) where the default relevance sort gave 10/10 real desks.
+  // We re-sort by landed cost in rankListings regardless, so sorting at the source can
+  // only decide WHICH candidates we spend extraction on — and relevance is what matters
+  // there. The max_price ceiling below still bounds the price side.
 
   const max = target.constraints.maxPriceCents;
   if (max != null) p.set('max_price', String(Math.ceil(max / 100))); // CL wants whole dollars
@@ -47,11 +54,14 @@ export function buildSearchUrl(target: TargetSpec, region: string): string {
 
 const MAX_TEXT_CHARS = 16_000; // matches ebay.ts extraction budget
 
-// Selector best-guess for Craigslist's gallery results. LIVE-UNVERIFIED — pinned by the
-// fixture, confirmed for real only when a Craigslist hunt runs. Anchored on the card, and
-// the posting anchor carries the canonical /<id>.html URL innerText would otherwise drop.
-const CARD_SELECTOR = 'li.cl-search-result, li.cl-static-search-result';
-const POST_ANCHOR = 'a.posting-title, a.cl-app-anchor';
+// Verified live 2026-07-24 (philadelphia). The pre-live guess said `li.cl-search-result`;
+// the real gallery card is a DIV, and naming the tag matched 0 of 24 cards. Deliberately
+// tag-agnostic now — the class is the contract, the element type is craigslist's business.
+// `.cl-static-search-result` covers the legacy static fallback craigslist still serves.
+const CARD_SELECTOR = '.cl-search-result, .cl-static-search-result';
+// `a.main` is the gallery image link, carrying the same permalink as the title anchor —
+// kept as a fallback so a card whose title anchor is missing is still usable.
+const POST_ANCHOR = 'a.posting-title, a.main, a.cl-app-anchor';
 
 const LOAD_ATTEMPTS = 2;
 
@@ -59,7 +69,23 @@ async function loadResults(page: Page, url: string): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector(CARD_SELECTOR, { state: 'attached', timeout: 20_000 });
+      // Waiting for the cards merely to be ATTACHED is a trap, measured live 2026-07-24:
+      // craigslist ships a pre-hydration skeleton whose cards carry no anchors and no
+      // text, `attached` resolves on it at ~200ms, the app then tears the skeleton down
+      // (~700ms, zero cards on the page) and mounts the real list at ~1200ms. So the
+      // adapter was reading the page a full second before the results existed and
+      // failing loud on an empty extract. Wait for what reduceResultsText actually
+      // needs instead — a card with a posting link AND rendered text. That is also
+      // self-correcting if craigslist retimes its hydration.
+      await page.waitForFunction(
+        ({ cardSelector, anchorSelector }) =>
+          Array.from(document.querySelectorAll(cardSelector)).some(
+            (c) =>
+              c.querySelector<HTMLAnchorElement>(anchorSelector)?.href && ((c as HTMLElement).innerText ?? '').trim(),
+          ),
+        { cardSelector: CARD_SELECTOR, anchorSelector: POST_ANCHOR },
+        { timeout: 20_000 },
+      );
       return;
     } catch (err) {
       if (attempt >= LOAD_ATTEMPTS) throw err;
@@ -75,10 +101,16 @@ export async function reduceResultsText(page: Page): Promise<string> {
       Array.from(document.querySelectorAll(cardSelector))
         .map((li) => {
           const a = li.querySelector<HTMLAnchorElement>(anchorSelector);
-          return {
-            href: a ? a.href.split('?')[0] : null,
-            text: ((li as HTMLElement).innerText ?? '').trim().replace(/\s*\n+\s*/g, ' | '),
-          };
+          const text = ((li as HTMLElement).innerText ?? '')
+            // The gallery's swipe dots render as a run of bare bullets at the head of
+            // every card's innerText (14 of them on a live card). They carry no meaning
+            // and would be ~24 cards' worth of junk tokens in the extraction prompt.
+            .replace(/^[\s•·]+/, '')
+            .split(/\n+/)
+            .map((line) => line.trim())
+            .filter((line) => line && !/^[•·]+$/.test(line))
+            .join(' | ');
+          return { href: a ? a.href.split('?')[0] : null, text };
         })
         .filter((row) => row.href && row.text), // cards with no posting link are chrome
     { cardSelector: CARD_SELECTOR, anchorSelector: POST_ANCHOR },
@@ -106,10 +138,22 @@ export async function fetchResultsText(page: Page, target: TargetSpec, region: s
   return reduceResultsText(page);
 }
 
-// Craigslist post URL: https://<region>.craigslist.org/<area>/<cat>/d/<slug>/<id>.html
-// Require a craigslist.org host and a numeric post id at the tail — reject foreign hosts
-// and index/listing pages, same guard shape as eBay's /itm/\d{9,}.
-const POST_URL = /^https?:\/\/[a-z0-9-]+\.craigslist\.org\/\S*\/(\d{6,})\.html(?:$|[?#])/;
+// Craigslist serves two permalink shapes, and as of the live check on 2026-07-24 the
+// gallery emits only the second — the pre-live guess accepted just the first, so every
+// extracted row would have been dropped as unusable:
+//   legacy: https://<region>.craigslist.org/<area>/<cat>/d/<slug>/<pid>.html
+//   modern: https://www.craigslist.org/view/d/<slug>/<token>
+// Both are accepted; whichever id matched becomes sourceId. The modern token is stable
+// (verified: 24/24 identical across two loads, and the post page's own "post id" matched
+// the card's data-pid), which is what watch dedup needs. Foreign hosts and index pages
+// still fail the guard — same shape as eBay's /itm/\d{9,}.
+const POST_URL_LEGACY = /^https?:\/\/[a-z0-9-]+\.craigslist\.org\/\S*\/(\d{6,})\.html(?:$|[?#])/;
+const POST_URL_MODERN = /^https?:\/\/[a-z0-9-]+\.craigslist\.org\/view\/d\/[^/]+\/([A-Za-z0-9]{8,})(?:$|[?#/])/;
+
+/** The craigslist post id in a result URL, or null if it isn't a post permalink at all. */
+export function postIdFromUrl(url: string): string | null {
+  return url.match(POST_URL_LEGACY)?.[1] ?? url.match(POST_URL_MODERN)?.[1] ?? null;
+}
 
 export function makeCraigslistAdapter(region?: string): SourceAdapter {
   return {
@@ -123,7 +167,7 @@ export function makeCraigslistAdapter(region?: string): SourceAdapter {
     },
 
     toListing(raw: RawListing): NormalizedListing | null {
-      const id = raw.url?.match(POST_URL)?.[1];
+      const id = raw.url ? postIdFromUrl(raw.url) : null;
       if (!id || !raw.url) return null; // no verifiable post URL → unusable row
       return {
         source: 'craigslist',

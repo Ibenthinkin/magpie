@@ -134,12 +134,18 @@ describe('craigslist buildSearchUrl', () => {
     ...over,
   });
 
-  test('region becomes the subdomain; query + cheapest-first sort', () => {
+  test('region becomes the subdomain and carries the query', () => {
     const url = new URL(clUrl(t(), 'sfbay'));
     expect(url.host).toBe('sfbay.craigslist.org');
     expect(url.pathname).toBe('/search/sss');
     expect(url.searchParams.get('query')).toBe('mx master 3s');
-    expect(url.searchParams.get('sort')).toBe('priceasc');
+  });
+
+  // Measured live 2026-07-24: sort=priceasc floats free junk that merely mentions the
+  // query words (4/10 relevant vs 10/10 on the default sort), and we re-sort by landed
+  // cost ourselves anyway. Pinned so nobody restores it for symmetry with ebay's _sop=15.
+  test('sends NO price sort — craigslist relevance beats cheapest-first here', () => {
+    expect(new URL(clUrl(t(), 'sfbay')).searchParams.get('sort')).toBeNull();
   });
 
   test('a US zip becomes postal + an EXACT search_distance (no ladder snapping)', () => {
@@ -175,9 +181,21 @@ describe('craigslist toListing', () => {
   const clRaw = (over: Partial<RawListing> = {}): RawListing =>
     raw({ url: 'https://sfbay.craigslist.org/eby/ele/d/oakland-logitech-mx-master/7712345678.html', ...over });
 
-  test('derives source_id from the numeric post id', () => {
+  test('derives source_id from the numeric post id (legacy permalink)', () => {
     const l = craigslistAdapter.toListing(clRaw());
     expect(l).toMatchObject({ source: 'craigslist', sourceId: '7712345678', currency: 'USD' });
+  });
+
+  // The shape craigslist's gallery actually emits as of 2026-07-24. The pre-live guess
+  // accepted only the legacy form, so every live row would have been dropped here —
+  // extraction would have looked fine and the hunt would have returned nothing.
+  test('derives source_id from the modern /view/d/<slug>/<token> permalink', () => {
+    const url = 'https://www.craigslist.org/view/d/broomall-new-uplift-standing-desk/8EhtzWDrDcXbcQiWBpsYRA';
+    expect(craigslistAdapter.toListing(clRaw({ url }))).toMatchObject({
+      source: 'craigslist',
+      sourceId: '8EhtzWDrDcXbcQiWBpsYRA',
+      url,
+    });
   });
 
   test('rejects a foreign host or a URL with no post id', () => {
@@ -186,6 +204,12 @@ describe('craigslist toListing', () => {
     expect(
       craigslistAdapter.toListing(clRaw({ url: 'https://sfbay.craigslist.org/eby/ele/d/x/index.html' })),
     ).toBeNull();
+    // A foreign host must not sneak through the modern branch either.
+    expect(
+      craigslistAdapter.toListing(clRaw({ url: 'https://evil.example/view/d/slug/8EhtzWDrDcXbcQiWBpsYRA' })),
+    ).toBeNull();
+    // /view/d/ with no token is an index page, not a post.
+    expect(craigslistAdapter.toListing(clRaw({ url: 'https://www.craigslist.org/view/d/slug' }))).toBeNull();
   });
 
   test('carries item location and seller rating through', () => {
