@@ -93,6 +93,12 @@ describe('makeDiscordReporter', () => {
     expect(embedJson(sent[0]!.message.embeds![0]!).description ?? '').not.toMatch(/discount/i);
   });
 
+  it('a card shows the item location when the source stated one', async () => {
+    const { sent, send } = capture();
+    await makeDiscordReporter(send).results(huntRow(), target, [ranked(1, { location: 'San Jose, CA' })], 1);
+    expect(embedJson(sent[0]!.message.embeds![0]!).description).toContain('San Jose, CA');
+  });
+
   it('the card footer names the listing source, not a hardcoded eBay', async () => {
     const { sent, send } = capture();
     await makeDiscordReporter(send).results(huntRow(), target, [ranked(1, { source: 'fixture' })], 1);

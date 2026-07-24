@@ -127,6 +127,29 @@ describe('rankListings with profile facts', () => {
   });
 });
 
+describe('rankListings — item location', () => {
+  it('shows each listing location and states the requested area, so the model can judge distance', async () => {
+    const captured = { prompts: [] as string[], systems: [] as string[] };
+    fakeRank(captured);
+    await rankListings([{ ...listing('A', 1000), location: 'San Jose, CA' }], {
+      description: 'desk',
+      constraints: { location: { near: 'Oakland, CA', maxMiles: 20 } },
+    });
+    for (const p of captured.prompts) {
+      expect(p).toContain('San Jose, CA');
+      expect(p).toContain('Oakland, CA'); // the constraint itself reaches the prompt
+    }
+    expect(captured.systems.some((s) => /location/i.test(s))).toBe(true);
+  });
+
+  it('omits the field when the source gave no location', async () => {
+    const captured = { prompts: [] as string[], systems: [] as string[] };
+    fakeRank(captured);
+    await rankListings([listing('A', 1000)], { description: 'desk', constraints: {} });
+    for (const p of captured.prompts) expect(p).not.toContain('location:');
+  });
+});
+
 describe('rankListings — seller rating', () => {
   const target = { description: 'widget', constraints: {} };
 

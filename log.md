@@ -5,7 +5,74 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-24-26 Fri]] — `phase-4-geo` merged to main
+
+**Shipped:** merged `phase-4-geo` → `main` (local `--no-ff`, the Phase 3 pattern). Seven commits:
+geo-local constraints end to end, the eBay `LH_LPickup` radius fix and the two extraction bugs the
+live smoke surfaced, the Craigslist adapter, and the live-smoke plan. Suite green on the branch
+before merging and on merged main: typecheck clean, **164 vitest · 21 bun-db · 13 bun-e2e**.
+
+Also corrected a stale `CHECKLIST.md` note that still called the geo live re-confirm "pending" —
+it passed on 07-23 and the log already said so.
+
+**Open / next:** `git push origin main` (Ben — classifier-blocked for Claude). Then the two things
+this branch deliberately left unverified: a real `sources:craigslist` hunt to confirm the
+best-guess selectors (promotes it into `DEFAULT_SOURCES`), and the deferred Haiku extraction A/B.
+Facebook Marketplace remains the account-ban-risk item that wants Ben present.
+
+### [[07-23-26 Thu]] — Live smoke: Phase 3 exit criterion met against real eBay
+
+Walking Ben through `docs/testing/2026-07-22-live-smoke.md`.
+
+**Findings so far:**
+- **Boot clean** — `commands=4`, `Magpie#8183`, `[boot.ready] headless=true`, no allowlist warning. A pre-existing `/watch` (Casio A500W) came due and fired on boot: `[scheduler.tick] enqueued=1` → full hunt, extracted 60/60, `shown=4`, ~$0.099. **Mode B proven live, unprompted**, before the scripted tests even started.
+- **`/profile` CRUD** — add / list / bogus-remove all as specified.
+- **Phase 3 exit criterion ✅ (the ⭐ one).** `/hunt logitech mx master 3s max_price:70` with an active `coupon_source` fact: discount line, ~10%-below-sticker landed price, verdict cites the coupon, footer `eBay · #1`. Removed the fact, re-ran: same listings, no discount, sticker prices. **Proven both directions.** Ticked `CHECKLIST.md` Phase-3 exit criterion.
+- **Extraction cost holding at real prices** — Sonnet extraction ~$0.077, rank ~$0.018 + ~$0.004 per hunt (in line with the ~16¢ Phase-1 baseline).
+
+**Geo narrowing — the live smoke earned its keep (found + fixed a real bug).**
+- **`_stpos`/`_sadis` alone were a silent no-op.** parseTarget + buildSearchUrl emit them correctly (confirmed: `…&_stpos=19147&_sadis=25`), but the result set was *byte-identical* with and without them — same "3,700+ results", same items, same order. Proven by loading both URLs in-browser and diffing. This is exactly the silent-degradation the invariants exist to catch, and exactly why this step needed live eyes.
+- **Root cause, via eBay's own UI:** `_stpos`/`_sadis` only *pre-fill* eBay's location option; nothing filters until you tick "Local Pickup within N mi", which the UI emits as **`LH_LPickup=1` (+ `LH_PrefLoc=99`, `_fspt=1`)**. eBay has **no ship-inclusive radius filter** — radius is inseparable from local pickup.
+- **Fix (Ben's call):** an anchored radius now adds `LH_LPickup=1&LH_PrefLoc=99&_fspt=1`. Narrows for real (**3,700+ → 59**) and eBay then renders per-item **"N mi from <zip>"** distances (a far better signal than the country-only "Located in United States" that search results otherwise expose). **Semantics Ben chose:** honoring "within N miles" = **local-pickup only**, ship-only listings excluded — the honest reading of "near me". Zip-only (no radius) still just sets ship-to context, no forced pickup filter.
+- Verified in-browser against the *exact* URL `buildSearchUrl` emits. New URL-contract test pins `LH_LPickup`.
+
+**Then test 4a surfaced two DEEPER bugs — both ours, both now fixed (Ben: "fix both now").** Enabling the filter revealed the first live hunt still ranked a *Santa Clarita* pickup desk (~2,390 mi from 19147) at #1 with "location unclear". Inspecting the real page (`get_page_text`) explained why:
+- **Bug A — we threw away the distance.** Every card's innerText carries eBay's own **"N mi from 19147"**, but extraction captured the coarse "Located in United States" instead, leaving the ranker blind ("distance unclear"). Fix: `extract.ts` `location` field now *prefers* the "N mi from <zip>" distance when present — it's eBay's computed number, not a guess, so it stays inside the never-geocode rule.
+- **Bug B — we ingested eBay's out-of-radius padding.** eBay stacks the genuine in-radius results, then pads with **"Results matching fewer words"** and **"<N> items found from eBay international sellers"** sections whose cards run to 4,885 mi. `fetchResultsText` was scraping every card on the page. Fix: extracted the DOM reduction into `reduceResultsText(page)` (mirrors craigslist.ts) and it now drops everything from the first padding heading onward (`RESULT_BOUNDARIES`, document-order via `compareDocumentPosition`).
+- Pinned by a new bun e2e (`tests/bun/e2e/ebay-fetch.test.ts` + `tests/fixtures/ebay/`) built from the real 2026-07-23 page: keeps the 3 in-radius cards, preserves "N mi", drops Santa Clarita / the international + fewer-words sections, fails loud on an empty page. Suite now **164 vitest · 34 bun**, typecheck clean.
+
+**Live-confirmed on the restarted (signed-in) process ✅** — re-ran `/hunt standing desk near 19147 within 25 miles`: cards now show the distance ("N mi from <zip>") on the Location line, no cross-country items. Geo narrowing works end to end. **Test 4 fully green** (4a fixed + confirmed; 4b radius 20→25 snap ✓; 4c Oakland place-name warning + no params ✓).
+
+**Open / next:**
+- **DEFERRED — cheap-extraction A/B (smoke doc §5).** Biggest cost lever: extraction was ~$0.118 of a ~$0.157 hunt. Re-run a known hunt with `MAGPIE_EXTRACT_MODEL=anthropic/claude-haiku-4.5` and compare row count / dropped-row warnings / quality / `usd=` against the Sonnet baseline. Keep only if row count and quality hold; unset = today's behavior. Ships off by design — a cheap model quietly mangling extraction is worse than a few extra cents.
+- Cleanup is effectively moot: the test coupon fact was already removed in test 3, and the smoke created no watches. The pre-existing Casio A500W `/watch` (fired on boot) is real, not test debris — Ben to decide whether to keep it.
+
 ### [[07-22-26 Wed]] — Phase 3 lands: `/profile`, seller rating, SPEC caught up
+
+*(Later the same day — Phase 3 pushed to `main` by Ben; live smoke deferred, so picked up the one Phase 4 item that needs no live testing. Branch `phase-4-geo`, suite **154 vitest · 21 bun-db · 7 bun-e2e**, typecheck clean.)*
+
+**Shipped — Craigslist adapter (Phase 4, offline, autonomous overnight session).** Ben went to bed and asked to "start on the next work item without me doing those tests," so I picked the Phase 4 item that's real progress *and* needs no live smoke: the **Craigslist adapter**. Spec + plan committed at `docs/superpowers/{specs,plans}/2026-07-22-craigslist-adapter*`. Suite now **163 vitest · 21 bun-db · 9 bun-e2e**, typecheck clean.
+- **Why Craigslist and not the other open Phase 4 items:** Facebook Marketplace is the "big risk" — needs a logged-in (maybe burner) account and *live* detection testing, exactly the work to do with Ben watching (CLAUDE.md: "account-ban risk respected"); Docker can't be built here (no Docker). Craigslist has **no login, no account → no ban risk**, is fully buildable/verifiable offline, and is the **second consumer of the geo plumbing** this branch added (only eBay read `constraints.location` before).
+- **Mirrors `ebay.ts` exactly.** Deterministic `buildSearchUrl` (query, `sort=priceasc`, `max_price` in whole dollars, `condition=10` only for `new`), LLM extraction via the shared `extractListings`, `toListing` guarded on a `craigslist.org` post id (`…/<id>.html`), conservative pacing (`15s` / `20/hr`).
+- **The geo contrast is the nice part:** eBay's `_sadis` snaps to a fixed ladder (radius rounds *up*); **Craigslist takes an exact `search_distance` integer** — same zip-anchored, never-geocode rule (`canAnchorRadius`), no snapping. Craigslist also has **no national search** (sharded into ~400 regional subdomains), so the region is the geography — configured via `CRAIGSLIST_REGION`, and `buildSearchUrl` **throws loud** if it's unset rather than guessing a zip into a region.
+- **Registered but opt-in.** `DEFAULT_SOURCES` stays `['ebay']`; Craigslist runs only via `sources:craigslist`. The result selectors (`li.cl-search-result`, `a.posting-title`) are a **live-unverified best-guess** pinned by a fixture — same posture that keeps the fixture source opt-in and `MAGPIE_EXTRACT_MODEL` off: don't silently enable an unverified path. A bun e2e reduces a hand-authored Craigslist-shaped page through real Playwright (`reduceResultsText`, no LLM), proving the DOM reduction and the fail-loud-on-zero-cards path.
+- **Nothing merged or pushed**, nothing in the default source set changed — so this is additive and fully reversible if the design wants redirecting.
+- **Open for Ben (in the spec):** (1) single `CRAIGSLIST_REGION` vs a per-`/hunt` region override — went with the single env for a personal single-user agent; (2) sanity-check that Craigslist was the right next source vs holding for Marketplace. Then the one live step this can't self-verify: a real `sources:craigslist` hunt to confirm the selectors, after which it can join `DEFAULT_SOURCES`.
+
+**Shipped — geo-local constraints, end to end:**
+- **Found dead code that had been live since Phase 1**: `constraints.location` (`near`/`maxMiles`) was parsed into every `TargetSpec` and read by *nothing* — `applyConstraints` destructured only price and condition, `RawListing` had no location field, and `ebay.ts` hardcoded `location: null`. Asking for "within 20 miles" silently searched everywhere.
+- **Narrowing now happens at the source**, where it can be exact: `buildSearchUrl` sets eBay's `_stpos` (zip) + `_sadis` (radius) so eBay computes distance server-side. Verified the param names by search rather than guessing — a wrong param is a silent no-op, the exact failure this repo forbids.
+- **`_sadis` only honours a fixed ladder** (10/25/50/100/200/500/1000), so a requested radius **snaps up** to the next rung. Up, never down: a superset is safe, narrowing tighter than asked would hide real matches — same instinct as the filter's "ties go to keeping the listing".
+- **Location extracted, ranked and shown** — optional-nullable through `RawListing`, into both rank prompts and onto the card, same pattern as seller rating.
+
+**Decisions:**
+- **We do not compute distance, on purpose.** Deciding "San Jose, CA" is outside 20 miles of Oakland needs geocoding, and Magpie's whole network posture is Discord + OpenRouter + retail sites. Adding a geo service to *hard-drop* listings would trade a load-bearing constraint for a guess. So: narrow at the source, surface the location, let the verdict judge it — and the prompt explicitly tells the model to say it's unsure rather than invent a distance. Pinned with a test (`never drops a listing on location`) so nobody later "fixes" it into fake math. Same shape as the Phase 3 discount rule: machine-apply only what's arithmetically defensible.
+- **A place name is never guessed into a zip.** A fabricated centroid would search the *wrong place* — worse than not narrowing. `canAnchorRadius` lives in `target.ts` and is shared by the adapter and the command.
+- **`/hunt` warns at request time** when a radius can't be anchored. A request we're quietly not honouring is the silent-degradation mode the invariants exist to prevent; results that look narrowed but aren't would be worse than the un-narrowed search itself.
+
+**Testing plan written for Ben** — `docs/testing/2026-07-22-live-smoke.md`, a pick-up-cold checklist covering the Phase 3 exit criterion, the geo params, and an optional Haiku extraction A/B (~15 min, ~50¢). Writing it surfaced a real gap: **the eBay search URL was never logged**, so there was no way to see whether `_stpos`/`_sadis` had actually been applied — added `[ebay] search <url>` at the search step, which is the adapter's whole contract with eBay and useful well beyond tonight. The plan is explicit that params-present-but-locations-nationwide means eBay is ignoring them (probably wants `LH_PrefLoc` too), since that failure looks identical to success from the Discord side.
+
+**Open / next:** the `_stpos`/`_sadis` behavior is **live-unverified** — param names are confirmed from docs but the actual narrowing needs one real eBay run, ideally alongside the Phase 3 smoke. Then the genuinely risky Phase 4 work (Marketplace/Craigslist adapters, detection mitigations) and the still-unwritten Dockerfile/compose (couldn't be built here — no Docker on this machine).
 
 **Shipped** (branch `phase-3-profile`, tasks 6–9 of the plan; suite green at each step — typecheck clean, **141 vitest, 21 bun-db, 7 bun-e2e**):
 - **`/profile add|list|remove`** (`src/discord/commands/profile.ts`) — the missing user-facing half. Until now the discount machinery from tasks 1–5 was unreachable: there was no way to get a fact into the database. No LLM in this path; facts are stored verbatim. `remove` is soft and deliberately reports **not-found for an already-removed fact** rather than confirming a second removal, so the reply can never disagree with `/profile list`.

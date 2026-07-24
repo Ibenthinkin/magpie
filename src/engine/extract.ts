@@ -22,6 +22,14 @@ const looseRowSchema = z.object({
     .number()
     .nullable()
     .describe('seller rating as shown — eBay feedback percent like 99.4 — or null if the row has none'),
+  location: z
+    .string()
+    .nullable()
+    .describe(
+      'the most useful location signal in the row: PREFER a distance like "25 mi from 19147" ' +
+        'when present — it is the marketplace\'s own computed distance from the buyer, not a guess — ' +
+        'otherwise the item location text as shown, e.g. "San Jose, CA" or "United Kingdom". null if absent',
+    ),
 });
 const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 

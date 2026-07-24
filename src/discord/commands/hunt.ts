@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import type { HuntRow, HuntsRepo } from '../../db/types';
 import { withUsage } from '../../engine/llm';
-import type { TargetSpec } from '../../engine/target';
+import { canAnchorRadius, type TargetSpec } from '../../engine/target';
 import { logError } from '../../log';
 import { DEFAULT_SOURCES } from '../../sources/registry';
 
@@ -39,8 +39,18 @@ export function describeTarget(target: TargetSpec): string {
   const c = target.constraints;
   if (c.maxPriceCents !== undefined) parts.push(`≤ $${(c.maxPriceCents / 100).toFixed(2).replace(/\.00$/, '')}`);
   if (c.conditions?.length) parts.push(c.conditions.join(' or '));
+  if (c.location?.near) {
+    parts.push(c.location.maxMiles != null ? `within ${c.location.maxMiles}mi of ${c.location.near}` : `near ${c.location.near}`);
+  }
   const sources = target.sources?.length ? target.sources : DEFAULT_SOURCES;
-  return `Hunting: ${parts.join(' · ')} — across ${sources.join(', ')}…`;
+  const line = `Hunting: ${parts.join(' · ')} — across ${sources.join(', ')}…`;
+
+  // A radius we can't anchor is a request we're quietly not honouring. Say so
+  // here rather than letting the results look like a narrowed search.
+  if (c.location?.maxMiles != null && !canAnchorRadius(c.location)) {
+    return `${line}\n(Heads up: I can only narrow by distance from a **zip code** — "${c.location.near}" isn't one, so this searches everywhere. Locations still show on each card.)`;
+  }
+  return line;
 }
 
 export async function handleHuntCommand(interaction: HuntInteractionPort, deps: HuntCommandDeps): Promise<HuntRow | null> {

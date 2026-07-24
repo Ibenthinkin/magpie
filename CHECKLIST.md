@@ -115,18 +115,18 @@ Derived from `SPEC.md` §14 build order. Check off as you go; each phase has an 
 - [x] Tests: `landedCost` membership/coupon cases; verdict mentions discount impact.
 
 ### Exit criteria
-- [ ] A hunt with an active membership fact ranks a discounted listing correctly and the verdict cites the membership. *Proven offline end to end (`tests/bun/e2e/hunt-e2e.test.ts`); awaiting the live Discord smoke.*
+- [x] A hunt with an active membership fact ranks a discounted listing correctly and the verdict cites the membership. *Live-smoked 2026-07-23: coupon fact active → discount line + ~10%-below-sticker landed price + verdict cites it + footer `eBay · #1`; removed the fact → same listings, no discount. Proven both directions against real eBay/Discord.*
 
 ## Phase 4 — Hard sources (carefully)
 
 > Goal: Facebook Marketplace / Craigslist with account-ban risk respected. The big risk — proceed deliberately.
 
 - [ ] Harden `pacing.ts` — strict per-source rate caps, conservative human-like delays for marketplaces.
-- [ ] Geo-local constraint handling — `TargetSpec.constraints.location` (`near` / `maxMiles`) end-to-end.
-- [ ] `src/sources/craigslist.ts` and/or `src/sources/facebook.ts` — guided adapters; consider a dedicated account for Marketplace.
+- [x] Geo-local constraint handling — `TargetSpec.constraints.location` (`near` / `maxMiles`) end-to-end. *Narrowed at the source (eBay), radius snapped up to eBay's ladder; location extracted, ranked and shown. We deliberately never compute distance ourselves — no geocoder, so no fake math. Zip-anchored only; `/hunt` warns on a place name. **Live-smoked 2026-07-23 — and caught a real bug**: `_stpos`/`_sadis` alone are a silent no-op (byte-identical result set with/without them). eBay's only radius filter is local-pickup, so an anchored radius now also sets `LH_LPickup=1` + `LH_PrefLoc=99` + `_fspt=1` — narrows for real (3,700+ → 59) and eBay renders per-item "N mi from <zip>". Trade-off Ben chose: honoring "within N miles" = local-pickup only (no ship-only listings). Then two deeper extraction bugs, both fixed: (A) we dropped eBay's own per-card "N mi from <zip>" distance (extraction now prefers it — eBay's number, not a geocode); (B) we ingested eBay's out-of-radius padding ("Results matching fewer words" / "N items found from eBay international sellers", cards to 4,885 mi) — DOM reduction extracted into `reduceResultsText` and trimmed at those section headings. Pinned by `tests/bun/e2e/ebay-fetch.test.ts` from the real page. Re-confirmed live on the restarted signed-in process: cards show "N mi from <zip>", no cross-country items.*
+- [~] `src/sources/craigslist.ts` and/or `src/sources/facebook.ts` — guided adapters; consider a dedicated account for Marketplace. *Craigslist done (mirrors `ebay.ts`): geo-aware `buildSearchUrl` (`postal` + **exact** `search_distance`, no ladder), LLM extraction via the shared path, `toListing` guarded on a craigslist.org post id, conservative pacing. **Opt-in** (`sources:craigslist`) — kept out of `DEFAULT_SOURCES` until live-smoked, since result selectors are live-unverified. No login/account → no ban risk. Facebook Marketplace still open — deferred to a session Ben runs (account-ban risk, needs live testing).*
 - [ ] Vision/screenshot fallback path wired for what the guided path can't reach (fallback only, not happy path).
 - [ ] Detection mitigations as needed — `channel:'chrome'` real install and/or headed-in-xvfb (decided empirically; see SPEC §15).
-- [ ] Fixtures + tests for the new adapters' `toListing`.
+- [x] Fixtures + tests for the new adapters' `toListing`. *Craigslist: unit tests for `buildSearchUrl` + `toListing`, plus a bun e2e reducing a hand-authored Craigslist-shaped fixture through real Playwright (`reduceResultsText`), no LLM. Suite: 163 vitest · 21 bun-db · 9 bun-e2e.*
 
 ### Exit criteria
 - [ ] At least one hard source returns listings on the owner's logged-in account without triggering a block during measured, rate-capped use.

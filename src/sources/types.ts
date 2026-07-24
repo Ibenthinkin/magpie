@@ -6,7 +6,7 @@ import type { TargetSpec } from '../engine/target';
 // knows its source's search-URL pattern and walks results deterministically;
 // the LLM extracts, it never navigates, on the happy path.
 
-export type SourceId = 'ebay' | 'fixture';
+export type SourceId = 'ebay' | 'craigslist' | 'fixture';
 
 // Strict shape a usable extracted row must satisfy (validated locally, never
 // sent to the LLM, so bound keywords are fine here).
@@ -20,6 +20,10 @@ export const rawListingSchema = z.object({
   // fixture) stay valid; it feeds the verdict prompt and the card, never the
   // deterministic cost math — SPEC §6.5 puts seller rating in the LLM's hands.
   sellerRating: z.number().nullable().optional(),
+  // Item location as the source states it ("San Jose, CA"). Narrowing by radius
+  // happens at the source (see ebay.ts buildSearchUrl); we never compute
+  // distance ourselves — that would need geocoding we deliberately don't have.
+  location: z.string().nullable().optional(),
 });
 export type RawListing = z.infer<typeof rawListingSchema>;
 

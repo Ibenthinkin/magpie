@@ -44,6 +44,7 @@ export function buildListingEmbed(listing: RankedListing, rank: number): EmbedBu
   if (listing.discountCents > 0) lines.push(`Includes ${usd(listing.discountCents)} membership/coupon discount`);
   if (listing.condition) lines.push(`Condition: ${listing.condition}`);
   if (listing.sellerRating != null) lines.push(`Seller: ${listing.sellerRating}%`);
+  if (listing.location) lines.push(`Location: ${listing.location}`);
   lines.push('', listing.verdict);
 
   const embed = new EmbedBuilder()
