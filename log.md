@@ -5,6 +5,21 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-24-26 Fri]] — `phase-4-geo` merged to main
+
+**Shipped:** merged `phase-4-geo` → `main` (local `--no-ff`, the Phase 3 pattern). Seven commits:
+geo-local constraints end to end, the eBay `LH_LPickup` radius fix and the two extraction bugs the
+live smoke surfaced, the Craigslist adapter, and the live-smoke plan. Suite green on the branch
+before merging and on merged main: typecheck clean, **164 vitest · 21 bun-db · 13 bun-e2e**.
+
+Also corrected a stale `CHECKLIST.md` note that still called the geo live re-confirm "pending" —
+it passed on 07-23 and the log already said so.
+
+**Open / next:** `git push origin main` (Ben — classifier-blocked for Claude). Then the two things
+this branch deliberately left unverified: a real `sources:craigslist` hunt to confirm the
+best-guess selectors (promotes it into `DEFAULT_SOURCES`), and the deferred Haiku extraction A/B.
+Facebook Marketplace remains the account-ban-risk item that wants Ben present.
+
 ### [[07-23-26 Thu]] — Live smoke: Phase 3 exit criterion met against real eBay
 
 Walking Ben through `docs/testing/2026-07-22-live-smoke.md`.
