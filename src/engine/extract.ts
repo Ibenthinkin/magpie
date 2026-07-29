@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rawListingSchema, type RawListing } from '../sources/types';
+import { keepValidRows, rawListingSchema, type RawListing } from '../sources/types';
 import { extractionModel, genObject } from './llm';
 import type { TargetSpec } from './target';
 
@@ -55,18 +55,5 @@ export async function extractListings(pageText: string, target: TargetSpec): Pro
     model: extractionModel(),
   });
 
-  const kept: RawListing[] = [];
-  for (const row of listings) {
-    const parsed = rawListingSchema.safeParse(row);
-    if (parsed.success) {
-      kept.push(parsed.data);
-    } else {
-      console.warn(
-        `[extract] dropped invalid row: ${JSON.stringify(row)} — ` +
-          parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
-      );
-    }
-  }
-  console.log(`[extract] kept ${kept.length}/${listings.length} rows`);
-  return kept;
+  return keepValidRows(listings, 'extract');
 }
