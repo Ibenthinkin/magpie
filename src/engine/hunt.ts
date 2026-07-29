@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { Pacer } from '../browser/pacing';
+import { ChallengeDetectedError, type Pacer } from '../browser/pacing';
 import type { HuntRow, HuntsRepo, ListingsRepo, NewHuntResult, ProfileRepo, WatchesRepo } from '../db/types';
 import { log, logError } from '../log';
 import type { RawListing, SourceAdapter } from '../sources/types';
@@ -33,6 +33,8 @@ export interface HuntDeps {
   profile: Pick<ProfileRepo, 'activeFacts'>;
   reporter: Reporter;
   pace: Pacer;
+  /** Puts a source into cooldown after it serves a bot challenge (SPEC Phase 4 hardening). */
+  reportChallenge: (source: string) => void;
   now?: () => string;
 }
 
@@ -70,6 +72,7 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
             }
             log('hunt.search', { hunt: huntRow.id, source: adapter.source, kept: raws.length - dropped, dropped });
           } catch (err) {
+            if (err instanceof ChallengeDetectedError) deps.reportChallenge(adapter.source);
             sourceErrors.push(`${adapter.source}: ${message(err)}`);
             logError('hunt.search', err, { hunt: huntRow.id, source: adapter.source });
           }

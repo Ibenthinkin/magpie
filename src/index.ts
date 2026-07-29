@@ -70,7 +70,7 @@ async function main(): Promise<void> {
   });
 
   const reporter = makeDiscordReporter(gateway.send, { watches });
-  const pace = makePacer();
+  const { pace, reportChallenge } = makePacer({ challengeCooldownMs: 60 * 60 * 1000 });
   const worker = startWorker({
     hunts,
     runHunt: (hunt) =>
@@ -83,6 +83,7 @@ async function main(): Promise<void> {
         profile,
         reporter,
         pace,
+        reportChallenge,
       }),
   });
 

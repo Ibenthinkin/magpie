@@ -83,6 +83,7 @@ describe('watch lifecycle e2e (scheduler → queue → engine dedup, fixture sou
         },
       };
 
+      const { pace, reportChallenge } = makePacer();
       const worker = startWorker({
         hunts,
         idleMs: 20,
@@ -95,7 +96,8 @@ describe('watch lifecycle e2e (scheduler → queue → engine dedup, fixture sou
             watches,
             profile,
             reporter,
-            pace: makePacer(),
+            pace,
+            reportChallenge,
           });
           runs[settleIdx++]?.resolve();
         },

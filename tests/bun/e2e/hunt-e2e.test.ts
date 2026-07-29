@@ -74,6 +74,7 @@ function makePipeline(baseUrl: string) {
     },
   };
 
+  const { pace, reportChallenge } = makePacer();
   const worker = startWorker({
     hunts,
     idleMs: 20,
@@ -86,7 +87,8 @@ function makePipeline(baseUrl: string) {
         watches,
         profile,
         reporter,
-        pace: makePacer(),
+        pace,
+        reportChallenge,
       }),
   });
 

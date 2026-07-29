@@ -9,6 +9,7 @@ import type {
   NewListing,
   ProfileFactRow,
 } from '../../src/db/types';
+import { ChallengeDetectedError } from '../../src/browser/pacing';
 import { setGenerateForTests } from '../../src/engine/llm';
 import { runHunt, type HuntDeps, type Reporter } from '../../src/engine/hunt';
 import type { RawListing, SourceAdapter, SourceId } from '../../src/sources/types';
@@ -97,6 +98,7 @@ interface Harness {
   reported: { hunt: HuntRow; rankedTitles: string[]; extractedCount: number }[];
   errored: { hunt: HuntRow; message: string }[];
   paced: string[];
+  challengedSources: string[];
   /** watch dedup fake: listing ids already hit, and insertHits calls made. */
   seen: Set<string>;
   hitsInserted: { watchId: string; listingIds: string[] }[];
@@ -114,6 +116,7 @@ function makeHarness(adapters: SourceAdapter[]): Harness {
     reported: [],
     errored: [],
     paced: [],
+    challengedSources: [],
     seen: new Set(),
     hitsInserted: [],
     facts: [],
@@ -150,6 +153,7 @@ function makeHarness(adapters: SourceAdapter[]): Harness {
     listings,
     reporter,
     pace: async (source) => void h.paced.push(source),
+    reportChallenge: (source) => void h.challengedSources.push(source),
     watches: {
       unseenListingIds: (_watchId, ids) => ids.filter((id) => !h.seen.has(id)),
       insertHits: (watchId, listingIds) => void h.hitsInserted.push({ watchId, listingIds }),
@@ -220,6 +224,30 @@ describe('runHunt', () => {
     expect(h.upserts).toHaveLength(1);
     expect(h.completed).toHaveLength(1);
     expect(h.failed).toEqual([]);
+  });
+
+  it('an adapter throwing ChallengeDetectedError reports the challenge and the hunt still completes', async () => {
+    fakeRank();
+    const h = makeHarness([
+      fakeAdapter('ebay', new ChallengeDetectedError('eBay served a bot challenge')),
+      fakeAdapter('fixture', [raw(1)]),
+    ]);
+    await runHunt(huntRow(), h.deps);
+    expect(h.challengedSources).toEqual(['ebay']);
+    expect(h.upserts).toHaveLength(1);
+    expect(h.completed).toHaveLength(1);
+    expect(h.failed).toEqual([]);
+  });
+
+  it('an adapter throwing a plain Error does NOT report a challenge', async () => {
+    fakeRank();
+    const h = makeHarness([
+      fakeAdapter('ebay', new Error('bot challenge')),
+      fakeAdapter('fixture', [raw(1)]),
+    ]);
+    await runHunt(huntRow(), h.deps);
+    expect(h.challengedSources).toEqual([]);
+    expect(h.completed).toHaveLength(1);
   });
 
   it('ALL adapters failing marks the hunt failed and reports the error', async () => {

@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { ChallengeDetectedError } from '../browser/pacing';
 import { extractListings } from '../engine/extract';
 import { canAnchorRadius, type TargetSpec } from '../engine/target';
 import type { NormalizedListing, RawListing, SourceAdapter } from './types';
@@ -106,7 +107,7 @@ async function loadResults(page: Page, url: string): Promise<void> {
       return;
     } catch (err) {
       if (page.url().includes('/splashui/challenge')) {
-        throw new Error(`eBay served a bot challenge at ${page.url()} — back off and retry later.`);
+        throw new ChallengeDetectedError(`eBay served a bot challenge at ${page.url()} — back off and retry later.`);
       }
       if (attempt >= LOAD_ATTEMPTS) throw err;
       console.warn(`[ebay] results did not settle (attempt ${attempt}/${LOAD_ATTEMPTS}), retrying: ${url}`);
