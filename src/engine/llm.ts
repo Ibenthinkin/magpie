@@ -49,10 +49,12 @@ export function extractionModel(): string | undefined {
 }
 
 /**
- * Optional vision-capable model for the image-fallback extraction pass
- * (Task 5). Unset means no vision fallback is attempted, so the default
- * behavior is unchanged and a vision model can never silently get invoked
- * without someone opting in. Read per call, not cached.
+ * Optional vision-capable model override for the image-fallback extraction
+ * pass. Unset falls through to MAGPIE_MODEL (assumed multimodal) — mirrors
+ * extractionModel()'s override pattern. Whether vision fallback runs at all
+ * is a separate, opt-in gate (MAGPIE_VISION_FALLBACK_ENABLED, wired in
+ * src/index.ts): this function only picks which model to use once fallback
+ * is already enabled. Read per call, not cached.
  */
 export function visionModel(): string | undefined {
   return process.env.MAGPIE_VISION_MODEL || undefined;
