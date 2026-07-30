@@ -8,8 +8,10 @@ import type { TargetSpec } from './target';
 // rows are dropped with a warning, never crashed on. SPEC §6.4.
 
 // Lenient shape the LLM fills — everything nullable so a messy row can't fail the
-// whole call; we validate/drop per-row below.
-const looseRowSchema = z.object({
+// whole call; we validate/drop per-row below. Exported so the vision-fallback
+// extraction pass (visionExtract.ts, Task 5) reuses the exact same row/array
+// shape instead of inventing a parallel one.
+export const looseRowSchema = z.object({
   title: z.string().nullable(),
   priceCents: z.number().nullable().describe('item price as integer US cents'),
   shippingCents: z.number().nullable().describe('shipping as integer US cents; null if free or unknown'),
@@ -31,7 +33,7 @@ const looseRowSchema = z.object({
         'otherwise the item location text as shown, e.g. "San Jose, CA" or "United Kingdom". null if absent',
     ),
 });
-const extractSchema = z.object({ listings: z.array(looseRowSchema) });
+export const extractSchema = z.object({ listings: z.array(looseRowSchema) });
 
 // The strict row shape (rawListingSchema) lives in sources/types.ts with the
 // rest of the adapter contract; re-exported here for existing callers.
