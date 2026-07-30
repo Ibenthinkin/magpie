@@ -410,11 +410,14 @@ describe('runHunt', () => {
     it('search() throwing a plain Error recovers via visionFallback, called with (page, source, target)', async () => {
       fakeRank();
       const h = makeHarness([fakeAdapter('ebay', new Error('layout changed'))]);
+      const fakePage = { close: async () => {} } as unknown as Page;
+      h.deps.getPage = async () => fakePage;
       const vision = fakeVision([raw(1)]);
       h.deps.visionFallback = vision.fn;
       await runHunt(huntRow(), h.deps);
 
       expect(vision.calls).toHaveLength(1);
+      expect(vision.calls[0]!.page).toBe(fakePage);
       expect(vision.calls[0]!.source).toBe('ebay');
       expect(vision.calls[0]!.target).toEqual({ description: 'widget 3000', constraints: {} });
       expect(h.upserts).toHaveLength(1);
@@ -461,6 +464,25 @@ describe('runHunt', () => {
       };
       await runHunt(huntRow(), h.deps);
 
+      expect(h.completed).toEqual([]);
+      expect(h.failed).toHaveLength(1);
+      expect(h.failed[0]!.error).toMatch(/vision extraction failed/);
+    });
+
+    it('zero rows + a rejecting visionFallback is that adapter\'s failure, called exactly once (no double-fire)', async () => {
+      const h = makeHarness([fakeAdapter('ebay', [])]);
+      let calls = 0;
+      h.deps.visionFallback = async () => {
+        calls++;
+        throw new Error('vision extraction failed');
+      };
+      await runHunt(huntRow(), h.deps);
+
+      // Regression guard for the bug where the empty-result fallback lived
+      // inside the same try/catch as adapter.search(): a throw from THAT call
+      // would be re-caught as if it were a search() failure and trigger a
+      // second vision call, discarding the first error with no log line.
+      expect(calls).toBe(1);
       expect(h.completed).toEqual([]);
       expect(h.failed).toHaveLength(1);
       expect(h.failed[0]!.error).toMatch(/vision extraction failed/);

@@ -69,24 +69,29 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
           try {
             await deps.pace(adapter.source, adapter.rateLimit);
             let raws: RawListing[];
+            let recovered = false;
             try {
               raws = await adapter.search(page, target);
-              // Empty is not an error — but it may still mean the deterministic
-              // path missed usable content, so give vision one shot at it.
-              if (raws.length === 0 && deps.visionFallback) {
-                raws = await deps.visionFallback(page, adapter.source, target);
-              }
             } catch (searchErr) {
               // Challenge pages have nothing useful to look at, and a disabled
               // fallback means recovery isn't available — either way, propagate
               // exactly as before Task 6 so the outer catch's reportChallenge /
               // sourceErrors handling fires unchanged. A vision fallback that
               // itself throws also propagates here — fail loud, not swallowed.
-              if (deps.visionFallback && !(searchErr instanceof ChallengeDetectedError)) {
-                raws = await deps.visionFallback(page, adapter.source, target);
-              } else {
-                throw searchErr;
-              }
+              if (!deps.visionFallback || searchErr instanceof ChallengeDetectedError) throw searchErr;
+              log('hunt.visionRecover', { hunt: huntRow.id, source: adapter.source, error: message(searchErr) });
+              raws = await deps.visionFallback(page, adapter.source, target);
+              recovered = true;
+            }
+            // Empty is not an error — but it may still mean the deterministic
+            // path missed usable content, so give vision one shot at it. This
+            // check sits OUTSIDE the try/catch above: an error thrown from this
+            // call must land in the outer per-adapter catch exactly once, not
+            // be reinterpreted as a search() failure and trigger a second vision
+            // call. `recovered` also stops an already-recovered empty result
+            // from triggering a second, redundant fallback call.
+            if (!recovered && raws.length === 0 && deps.visionFallback) {
+              raws = await deps.visionFallback(page, adapter.source, target);
             }
             let dropped = 0;
             for (const raw of raws) {
