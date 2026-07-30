@@ -20,6 +20,17 @@ const target: TargetSpec = { description, constraints: {} };
 const context = await getContext();
 const page = context.pages()[0] ?? (await context.newPage());
 await page.goto(url, { waitUntil: 'domcontentloaded' });
+// Vision fallback is source-agnostic by design (that's the point — it's the
+// path for pages a guided adapter's specific selector can't reliably reach),
+// so there's no single CARD_SELECTOR to wait on here the way src/sources/
+// ebay.ts does. Results on eBay (and most marketplace search pages) render
+// client-side after DOMContentLoaded; screenshotting right after goto would
+// capture a half-rendered page and produce a plausible-but-wrong low-quality
+// reading (e.g. 3 listings instead of 20) that looks like a real result
+// instead of an error. Wait for the network to settle so real content is on
+// the page before the screenshot — fail loud (timeout throws) rather than
+// silently judging vision quality off a skeleton.
+await page.waitForLoadState('networkidle', { timeout: 30_000 });
 
 const listings = await runVisionFallback(page, 'smoke-vision', target);
 

@@ -40,8 +40,10 @@ describe('runVisionFallback e2e (real page + browser, mocked LLM)', () => {
     await page.goto(`${server.baseUrl}/results.html`, { waitUntil: 'domcontentloaded' });
 
     let seenPrompt: string | undefined;
-    setGenerateForTests(({ prompt }) => {
+    let seenImageCount: number | undefined;
+    setGenerateForTests(({ prompt, imageCount }) => {
       seenPrompt = prompt;
+      seenImageCount = imageCount;
       return {
         object: {
           listings: [
@@ -83,5 +85,9 @@ describe('runVisionFallback e2e (real page + browser, mocked LLM)', () => {
     // resolved against the fixture site, not stubbed data.
     expect(seenPrompt).toContain(`${server.baseUrl}/item/fx-001.html`);
     expect(seenPrompt).toContain(`${server.baseUrl}/item/fx-007.html`);
+
+    // The real page.screenshot() buffer actually reached the genObject call —
+    // proves the screenshot half of the mechanics, not just the anchor half.
+    expect(seenImageCount).toBe(1);
   });
 });
