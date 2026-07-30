@@ -394,4 +394,94 @@ describe('runHunt', () => {
     expect(h.failed).toHaveLength(1);
     expect(h.failed[0]!.error).toMatch(/discord 403/);
   });
+
+  describe('vision fallback (Task 6, opt-in via deps.visionFallback)', () => {
+    /** Records (page, source, target) per call; deps.visionFallback is undefined unless a test sets it. */
+    const fakeVision = (rows: RawListing[] | Error) => {
+      const calls: { page: unknown; source: string; target: unknown }[] = [];
+      const fn = async (page: unknown, source: string, target: unknown) => {
+        calls.push({ page, source, target });
+        if (rows instanceof Error) throw rows;
+        return rows;
+      };
+      return { fn: fn as HuntDeps['visionFallback'], calls };
+    };
+
+    it('search() throwing a plain Error recovers via visionFallback, called with (page, source, target)', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', new Error('layout changed'))]);
+      const vision = fakeVision([raw(1)]);
+      h.deps.visionFallback = vision.fn;
+      await runHunt(huntRow(), h.deps);
+
+      expect(vision.calls).toHaveLength(1);
+      expect(vision.calls[0]!.source).toBe('ebay');
+      expect(vision.calls[0]!.target).toEqual({ description: 'widget 3000', constraints: {} });
+      expect(h.upserts).toHaveLength(1);
+      expect(h.completed).toHaveLength(1);
+      expect(h.failed).toEqual([]);
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 1']);
+    });
+
+    it('ChallengeDetectedError does NOT trigger vision fallback even when one is provided', async () => {
+      fakeRank();
+      const h = makeHarness([
+        fakeAdapter('ebay', new ChallengeDetectedError('eBay served a bot challenge')),
+        fakeAdapter('fixture', [raw(1)]),
+      ]);
+      const vision = fakeVision([raw(99)]);
+      h.deps.visionFallback = vision.fn;
+      await runHunt(huntRow(), h.deps);
+
+      expect(vision.calls).toEqual([]);
+      expect(h.challengedSources).toEqual(['ebay']);
+      expect(h.completed).toHaveLength(1);
+      expect(h.failed).toEqual([]);
+      // Only the fixture adapter's row made it through — vision never ran for ebay.
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 1']);
+    });
+
+    it('search() resolving with zero rows still tries vision fallback and uses its result', async () => {
+      fakeRank();
+      const h = makeHarness([fakeAdapter('ebay', [])]);
+      const vision = fakeVision([raw(5)]);
+      h.deps.visionFallback = vision.fn;
+      await runHunt(huntRow(), h.deps);
+
+      expect(vision.calls).toHaveLength(1);
+      expect(vision.calls[0]!.source).toBe('ebay');
+      expect(h.upserts).toHaveLength(1);
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 5']);
+    });
+
+    it('vision fallback itself throwing propagates as that adapter\'s failure, not swallowed', async () => {
+      const h = makeHarness([fakeAdapter('ebay', new Error('layout changed'))]);
+      h.deps.visionFallback = async () => {
+        throw new Error('vision extraction failed');
+      };
+      await runHunt(huntRow(), h.deps);
+
+      expect(h.completed).toEqual([]);
+      expect(h.failed).toHaveLength(1);
+      expect(h.failed[0]!.error).toMatch(/vision extraction failed/);
+    });
+
+    it('deps.visionFallback left undefined: adapter errors and empty results behave exactly as before', async () => {
+      fakeRank();
+      // Same shape as the pre-Task-6 "one adapter failing continues" case, plus
+      // an empty-result adapter thrown in — neither should attempt any recovery.
+      const h = makeHarness([
+        fakeAdapter('ebay', new Error('bot challenge')),
+        fakeAdapter('craigslist', []),
+        fakeAdapter('fixture', [raw(1)]),
+      ]);
+      expect(h.deps.visionFallback).toBeUndefined();
+      await runHunt(huntRow(), h.deps);
+
+      expect(h.upserts).toHaveLength(1);
+      expect(h.completed).toHaveLength(1);
+      expect(h.failed).toEqual([]);
+      expect(h.reported[0]!.rankedTitles).toEqual(['Widget 1']);
+    });
+  });
 });

@@ -7,6 +7,7 @@ import { applyConstraints } from './filter';
 import { withUsage } from './llm';
 import { rankListings, type RankedListing } from './rank';
 import { targetSpecSchema, type TargetSpec } from './target';
+import type { VisionFallback } from './visionFallback';
 
 // The hunt engine: one hunt end to end per SPEC §8. All three user modes
 // funnel through here; watch_run mode adds step 6 (dedup — notify each
@@ -35,6 +36,14 @@ export interface HuntDeps {
   pace: Pacer;
   /** Puts a source into cooldown after it serves a bot challenge (SPEC Phase 4 hardening). */
   reportChallenge: (source: string) => void;
+  /**
+   * Opt-in vision recovery (SPEC Phase 4 hardening): screenshots the page and
+   * extracts via LLM vision when an adapter's deterministic search() fails or
+   * comes back empty. Undefined = fallback disabled entirely (Task 7 wires the
+   * real function behind MAGPIE_VISION_FALLBACK_ENABLED); hunt.ts only ever
+   * checks whether this is defined, no other gating lives here.
+   */
+  visionFallback?: VisionFallback;
   now?: () => string;
 }
 
@@ -59,7 +68,26 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
         for (const adapter of adapters) {
           try {
             await deps.pace(adapter.source, adapter.rateLimit);
-            const raws = await adapter.search(page, target);
+            let raws: RawListing[];
+            try {
+              raws = await adapter.search(page, target);
+              // Empty is not an error — but it may still mean the deterministic
+              // path missed usable content, so give vision one shot at it.
+              if (raws.length === 0 && deps.visionFallback) {
+                raws = await deps.visionFallback(page, adapter.source, target);
+              }
+            } catch (searchErr) {
+              // Challenge pages have nothing useful to look at, and a disabled
+              // fallback means recovery isn't available — either way, propagate
+              // exactly as before Task 6 so the outer catch's reportChallenge /
+              // sourceErrors handling fires unchanged. A vision fallback that
+              // itself throws also propagates here — fail loud, not swallowed.
+              if (deps.visionFallback && !(searchErr instanceof ChallengeDetectedError)) {
+                raws = await deps.visionFallback(page, adapter.source, target);
+              } else {
+                throw searchErr;
+              }
+            }
             let dropped = 0;
             for (const raw of raws) {
               const norm = adapter.toListing(raw);
