@@ -48,6 +48,16 @@ export function extractionModel(): string | undefined {
   return process.env.MAGPIE_EXTRACT_MODEL || undefined;
 }
 
+/**
+ * Optional vision-capable model for the image-fallback extraction pass
+ * (Task 5). Unset means no vision fallback is attempted, so the default
+ * behavior is unchanged and a vision model can never silently get invoked
+ * without someone opting in. Read per call, not cached.
+ */
+export function visionModel(): string | undefined {
+  return process.env.MAGPIE_VISION_MODEL || undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Usage accounting
 
@@ -128,6 +138,7 @@ export interface FakeGenCall {
   label?: string;
   system?: string;
   prompt: string;
+  imageCount?: number;
 }
 
 export interface FakeGenResult {
@@ -148,6 +159,12 @@ export function setGenerateForTests(fn: FakeGenerate | null): void {
 // ---------------------------------------------------------------------------
 // Call surface
 
+/** An image attachment for a genObject call (vision fallback, Task 5). */
+export interface GenObjectImage {
+  data: Buffer | Uint8Array;
+  mediaType: string;
+}
+
 /** Structured generation with schema validation + usage accounting. */
 export async function genObject<T>(opts: {
   schema: z.ZodType<T>;
@@ -155,22 +172,46 @@ export async function genObject<T>(opts: {
   system?: string;
   label?: string; // identifies the call site in logs
   model?: string; // overrides MAGPIE_MODEL for this call
+  images?: GenObjectImage[]; // when present+non-empty, sent alongside prompt as a multimodal message
 }): Promise<T> {
   const label = opts.label ?? 'genObject';
+  const hasImages = (opts.images?.length ?? 0) > 0;
 
   if (fakeGenerate) {
-    const fake = await fakeGenerate({ kind: 'object', label: opts.label, system: opts.system, prompt: opts.prompt });
+    const fake = await fakeGenerate({
+      kind: 'object',
+      label: opts.label,
+      system: opts.system,
+      prompt: opts.prompt,
+      imageCount: opts.images?.length,
+    });
     account(label, 'fake', fake.usage, fake.costUsd);
     return fake.object as T;
   }
 
   const modelId = resolveModelId(opts.model);
-  const { object, usage, providerMetadata } = await generateObject({
-    model: getModel(modelId),
-    schema: opts.schema,
-    system: opts.system,
-    prompt: opts.prompt,
-  });
+  const model = getModel(modelId);
+  const { object, usage, providerMetadata } = hasImages
+    ? await generateObject({
+        model,
+        schema: opts.schema,
+        system: opts.system,
+        messages: [
+          {
+            role: 'user' as const,
+            content: [
+              { type: 'text' as const, text: opts.prompt },
+              ...opts.images!.map((img) => ({ type: 'file' as const, mediaType: img.mediaType, data: img.data })),
+            ],
+          },
+        ],
+      })
+    : await generateObject({
+        model,
+        schema: opts.schema,
+        system: opts.system,
+        prompt: opts.prompt,
+      });
   account(label, modelId, usage, reportedCost(providerMetadata));
   return object as T;
 }

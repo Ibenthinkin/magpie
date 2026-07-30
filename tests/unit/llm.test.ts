@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { extractionModel, genObject, genText, setGenerateForTests, withUsage } from '../../src/engine/llm';
+import { extractionModel, genObject, genText, setGenerateForTests, visionModel, withUsage } from '../../src/engine/llm';
 
 // Per-hunt usage accounting. withUsage() scopes a tally to its async context
 // (AsyncLocalStorage), so the worker's hunt bracket and a command-side
@@ -37,6 +37,33 @@ describe('setGenerateForTests seam', () => {
     await genObject({ schema: shape, prompt: 'the prompt', system: 'sys', label: 'myLabel' });
     expect(seen).toMatchObject({ kind: 'object', label: 'myLabel', system: 'sys', prompt: 'the prompt' });
   });
+
+  it('surfaces the image count to the fake when images are attached (vision fallback, Task 5)', async () => {
+    let seen: unknown;
+    setGenerateForTests((call) => {
+      seen = call;
+      return { object: { ok: true } };
+    });
+    await genObject({
+      schema: shape,
+      prompt: 'describe this',
+      images: [
+        { data: Buffer.from('fake-png-bytes'), mediaType: 'image/png' },
+        { data: new Uint8Array([1, 2, 3]), mediaType: 'image/jpeg' },
+      ],
+    });
+    expect(seen).toMatchObject({ kind: 'object', prompt: 'describe this', imageCount: 2 });
+  });
+
+  it('leaves imageCount unset on the fake call when no images are passed', async () => {
+    let seen: unknown;
+    setGenerateForTests((call) => {
+      seen = call;
+      return { object: { ok: true } };
+    });
+    await genObject({ schema: shape, prompt: 'no images here' });
+    expect((seen as { imageCount?: number }).imageCount).toBeUndefined();
+  });
 });
 
 describe('extractionModel — the opt-in cheap-extraction lever', () => {
@@ -63,6 +90,33 @@ describe('extractionModel — the opt-in cheap-extraction lever', () => {
     expect(extractionModel()).toBe('a/one');
     process.env.MAGPIE_EXTRACT_MODEL = 'b/two';
     expect(extractionModel()).toBe('b/two');
+  });
+});
+
+describe('visionModel — the opt-in vision-fallback lever (Task 5)', () => {
+  const saved = process.env.MAGPIE_VISION_MODEL;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.MAGPIE_VISION_MODEL;
+    else process.env.MAGPIE_VISION_MODEL = saved;
+  });
+
+  it('is off unless MAGPIE_VISION_MODEL names a model — unset and empty both mean "no vision fallback"', () => {
+    delete process.env.MAGPIE_VISION_MODEL;
+    expect(visionModel()).toBeUndefined();
+    process.env.MAGPIE_VISION_MODEL = '';
+    expect(visionModel()).toBeUndefined();
+  });
+
+  it('returns the configured model id when set', () => {
+    process.env.MAGPIE_VISION_MODEL = 'anthropic/claude-haiku-4.5-vision';
+    expect(visionModel()).toBe('anthropic/claude-haiku-4.5-vision');
+  });
+
+  it('is read per call, so flipping the env mid-process takes effect', () => {
+    process.env.MAGPIE_VISION_MODEL = 'a/one';
+    expect(visionModel()).toBe('a/one');
+    process.env.MAGPIE_VISION_MODEL = 'b/two';
+    expect(visionModel()).toBe('b/two');
   });
 });
 
@@ -142,5 +196,23 @@ describe('withUsage', () => {
       return usage();
     });
     expect(totals).toEqual({ inputTokens: 100, outputTokens: 50, costCents: 1 });
+  });
+
+  it('accounts usage identically whether or not images are attached — no special-casing cost tracking', async () => {
+    setGenerateForTests(() => ({
+      object: { ok: true },
+      usage: { inputTokens: 1000, outputTokens: 200 },
+      costUsd: 0.0123,
+    }));
+    const textOnly = await withUsage(async (usage) => {
+      await genObject({ schema: shape, prompt: 'a' });
+      return usage();
+    });
+    const withImages = await withUsage(async (usage) => {
+      await genObject({ schema: shape, prompt: 'a', images: [{ data: Buffer.from('x'), mediaType: 'image/png' }] });
+      return usage();
+    });
+    expect(withImages).toEqual(textOnly);
+    expect(textOnly).toEqual({ inputTokens: 1000, outputTokens: 200, costCents: 2 });
   });
 });
