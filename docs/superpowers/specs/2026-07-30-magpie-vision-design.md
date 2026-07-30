@@ -76,6 +76,20 @@ This is a small change with disproportionate payoff. It is a hard prerequisite f
 
 **Two caveats.** First, history accrues from the day it ships; the feature is worth nothing on day one and compounds from there, so it belongs early for that reason alone. Second, observations are keyed by **listing** identity, which is the right grain for `exact` hunts but the wrong one for consumables — the same coffee is a different listing on Amazon and at a big-box store. A product-level identity that rolls listings up is a real unsolved piece, deferred to Phase 10 where routines first need it.
 
+#### Third-party backfill (Keepa)
+
+Commercial Amazon price-history services exist and would erase the first caveat *for Amazon*. Findings as of 2026-07:
+
+- **Keepa** is the only serious option: documented API, hourly resolution, years of history, keyed by ASIN. But API access is a **separate subscription from the €19/mo Pro plan**, reported to start around **€49/mo** — which is not a line item against the §5 budget, it is the entire budget.
+- **Amazon's own Product Advertising API is not a path.** It returns current offers only, never history; it requires an Associates account with qualifying sales; and it is deprecated as of 2026-05-15 in favor of the Creators API.
+- **CamelCamelCamel** could not be verified — the site blocks automated fetches and secondary sources conflict on whether a public REST API exists. Not designed around.
+
+**This does not replace `price_point`.** Keepa covers Amazon alone, while the breadth thesis of §3.1 spans eBay, Craigslist, Etsy, Poshmark, Vinted, and Mercari JP — none of which have an equivalent. Self-observed history remains the general mechanism.
+
+**Design consequence:** `price_point` rows carry a **provider** (`observed` for Magpie's own hunts, `keepa` for backfill). The seam costs nothing to include in Phase 5 and defers the subscription decision to Phase 10, where routines are the first feature that genuinely needs a baseline price. A useful side effect: Keepa keys by ASIN, which is a real product identity, and would answer the listing-vs-product grain problem above for Amazon specifically.
+
+**Not recommended:** reading Keepa's free browser extension or chart through the persistent Chrome context. It is technically reachable, but it violates the terms of a service that sells this data as its product, it is fragile, and it puts a scraping dependency on a third party rather than on a retailer Magpie already has a reason to visit.
+
 ### 3.3 Promotions inbox
 
 Ben forwards promotional email to a dedicated mailbox. Magpie polls it over IMAP, parses each message into a structured promo, and applies it.
@@ -139,7 +153,7 @@ The tradeoff accepted: every casual message in the channel costs one classificat
 | Table | Purpose |
 |---|---|
 | `source` | catalog: name, homepage, search-URL template, category tags, region, `requires_login`, adapter override, result-quality tracking |
-| `price_point` | append-only price observations, keyed by listing identity (`source`, `source_id`) |
+| `price_point` | append-only price observations, keyed by listing identity (`source`, `source_id`), carrying a `provider` (`observed` \| third-party backfill) |
 | `promo` | parsed promotional offers with validity window, code, terms, source scope |
 | `routine` | tracked repeat purchases with baseline price |
 
@@ -173,7 +187,7 @@ Phases 0–3 are merged. Phase 4 is mostly merged (Craigslist, hardening, geo), 
 | **7 — Source catalog** | `source` table, prober, tag router, generic adapter; eBay + Craigslist migrate to catalog rows with adapter overrides; seed 20–40 sites | `/source add jp.mercari.com` learns a working template; a hunt reaches a source nobody wrote a file for |
 | **8 — Conversational layer** | Preference model (`scope`, `provenance`), onboarding interview, intent router | A slash-free sentence produces a real hunt; a correction sticks across hunts |
 | **9 — Style hunting** | Reference images, thumbnail vision scoring, `best_fit` objective, Etsy/Poshmark/Vinted via catalog | A photo plus "new or used" returns candidates worth buying |
-| **10 — Routines** | Order-history seeding, `routine` table, Amazon + big-box tier | Magpie proposes repeat buys from order history and flags one below baseline |
+| **10 — Routines** | Order-history seeding, `routine` table, Amazon + big-box tier; decide on Keepa backfill (§3.2) | Magpie proposes repeat buys from order history and flags one below baseline |
 | **11 — Grocery** | Store/zip selection, loyalty logins, per-store pricing | One store, one basket, real shelf prices |
 | **12 — Hub** | Extract `hub.ts` into reusable multi-agent infrastructure | A second agent uses it |
 
