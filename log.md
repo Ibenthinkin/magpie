@@ -5,6 +5,57 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-29-26 Wed]] — Phase 4 hardening underway: pacing backoff, BROWSER_CHANNEL, vision fallback (4/8 tasks)
+
+Ben asked "what's next" — the resume-point memory said `phase-4-geo` was unmerged; it wasn't
+(merged 07-24, see below). Corrected course: re-derived actual state from `CHECKLIST.md`/`log.md`/
+`git log` instead of trusting the stale note, then picked the one open item that needed no live
+Discord/region decision from Ben — Phase 4's three hardening boxes (pacing, detection mitigations,
+vision/screenshot fallback) — over Facebook Marketplace (explicitly wants Ben present) and the
+Haiku A/B test (deferred).
+
+**Decisions (confirmed with Ben via plan-mode questions):** vision fallback triggers on both a
+thrown adapter error *and* a legitimately-empty result set; vision model defaults to `MAGPIE_MODEL`,
+override via `MAGPIE_VISION_MODEL`, no hard cost ceiling in code (stays visible via `llm.ts`'s
+logging); screenshots sent to the LLM provider **as-is**, no cropping — CLAUDE.md's "never
+screenshotted" invariant is about Discord, not the LLM call; challenge cooldown defaults to 60min,
+global, env-overridable; `ChallengeDetectedError` wired for eBay only this pass (the only source
+with an *observed* live block — no invented Craigslist heuristic); vision fallback ships opt-in via
+`MAGPIE_VISION_FALLBACK_ENABLED` (default off).
+
+**Shipped so far** on branch `phase-4-hardening` (subagent-driven-development, one implementer +
+one independent reviewer per task, 4 of 8 tasks landed, all review-clean):
+- **Task 1** (`439fbf0`) — `pacing.ts` gained `ChallengeDetectedError` + per-source cooldown
+  (unconditional-set-on-repeat, so a second challenge during cooldown naturally extends it); wired
+  into `ebay.ts`'s existing bot-challenge throw and `hunt.ts`'s catch block. Reviewer specifically
+  verified the cooldown-blocked throw stays a *plain* `Error`, not `ChallengeDetectedError` — reusing
+  the challenge type there would've let routine pacing guards perpetually re-extend a cooldown.
+- **Task 2** (`3ecf1f8`) — `session.ts` got a pure, testable `resolveLaunchOptions()` and a
+  `BROWSER_CHANNEL` env knob for `channel:'chrome'`. Empirically testing whether a real Chrome
+  install actually reduces fingerprinting is left to Ben via the existing `scripts/smoke-browser.ts`
+  — the code only adds the capability.
+- **Task 3** (`04ca1c0`) — pure lift-and-shift of `extract.ts`'s row-validation loop into
+  `sources/types.ts`'s `keepValidRows()`, unblocking reuse from the not-yet-built vision-extraction
+  module without a circular import.
+- **Task 4** (`8257cb7`) — `llm.ts` gained `genObject({images})` and `visionModel()`. First attempt
+  stalled on a harness watchdog mid-edit with a complete but uncommitted diff; rather than discard
+  it, handed the salvaged diff to a fresh implementer to *verify, not trust* — it checked the
+  multimodal message shape against the real installed `ai`/`@ai-sdk/provider-utils` v7 type
+  definitions rather than assuming, confirmed correct, and shipped as-is.
+- Also fixed a `noUncheckedIndexedAccess` typecheck error in `types.test.ts` that Task 3's review
+  missed (`bun run test` doesn't run `tsc`; now both are required per task in the plan's Global
+  Constraints).
+
+**Open / next:** Tasks 5–8 — the vision extraction/fallback modules themselves (`visionExtract.ts`,
+`visionFallback.ts`), wiring both the vision fallback and challenge-reporting into `hunt.ts`'s
+orchestration loop (the highest-risk remaining step — core loop, do last), `index.ts` opt-in-flag
+wiring, then a bun e2e test plus `scripts/smoke-vision.ts` for Ben's manual cost/quality check
+before flipping `MAGPIE_VISION_FALLBACK_ENABLED` on for real. Full plan at
+`~/.claude/plans/so-what-s-next-in-delegated-barto.md`; ledger at
+`.superpowers/sdd/so-what-s-next-in-delegated-barto/progress.md`.
+
+*Session spend: 25.15M tok (in 434 · out 171.3k · cache r 23.83M / w 1.15M) · ~≥$12.64 · sonnet-5 + opus-4-7 + <synthetic> · 14:35→20:59*
+
 ### [[07-24-26 Fri]] — `phase-4-geo` merged to main; Craigslist taken live (four bugs)
 
 **Shipped — Craigslist live-verified, and the pre-live guess was wrong in four ways.** Ben
