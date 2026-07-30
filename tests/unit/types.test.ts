@@ -79,7 +79,7 @@ describe('keepValidRows', () => {
     const result = keepValidRows(mixedRows, 'extract');
 
     expect(result).toHaveLength(1);
-    expect(result[0].title).toBe('Valid Item');
+    expect(result[0]?.title).toBe('Valid Item');
     expect(consoleSpy.warn).toHaveBeenCalledTimes(2);
     expect(consoleSpy.log).toHaveBeenCalledWith('[extract] kept 1/3 rows');
   });
