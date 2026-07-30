@@ -5,6 +5,70 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-30-26 Thu]] — Vision reset: "help me buy anything", and Phase 5 costs out the watchlist promise
+
+Ben opened with a direction conversation rather than a task: Magpie should help with *any* purchase —
+obscure category-specific marketplaces (a Japanese camera auction site), style search across new and
+used (Etsy vs Poshmark/Vinted), preference questions ("is color or quality more important?"), an
+onboarding interview, cheapest-routine-buys from Amazon/groceries, and forwarded promo emails. Ran
+`superpowers:brainstorming`. Scoped it as **seven subsystems, not a feature list**, and decomposed
+rather than trying to spec it whole.
+
+**The reframe that made it tractable.** SPEC's "three modes of one engine" doesn't survive this, but
+the instinct does — replaced modes with **four dimensions**: target kind (`exact`/`style`/`consumable`)
+× objective (`cheapest`/`best_fit`/`best_value`) × trigger (asked/scheduled/promo/threshold) × sources
+(catalog-routed). `/hunt` is `(exact, cheapest, asked)`; the t-shirt is `(style, best_fit)`. Everything
+still produces an ordinary `hunt` row, so queue/worker/dedup/cost-accounting survive untouched. That's
+the load-bearing constraint on all future work.
+
+**Decisions (all via brainstorming questions):** source catalog grows by seed + **probe** + rare
+explicit discovery — the probe *drives* a site to learn its search-URL template rather than letting an
+LLM guess one, which is the whole reason breadth is feasible; hand-written adapters become an override,
+not the only path. Style hunts get thumbnail vision **plus reference images** (drop a photo in Discord).
+Hunts **never pause for input** — clarify before starting only when it changes source selection, else
+assume-and-learn from corrections (rejected `awaiting_input` + resume as too much complexity in the
+most reliable part of the system). Routines seed from Amazon order history **once**, then curated
+(rejected continuous sync as exactly the ban risk SPEC §15 flags). Promos cross-check watches/routines
+on arrival **and** nudge before expiry. Conversational surface is an **intent router in front of the
+existing commands**, not a full agent loop.
+
+**Findings.**
+- Ben asked whether Amazon price-history APIs exist. They do, but: **Keepa** is the only serious one and
+  API access is a *separate* subscription (~€49/mo) from the €19 Pro plan everyone means; Amazon's own
+  PA-API never returned history, requires Associates-with-sales, and is deprecated 2026-05-15;
+  CamelCamelCamel unverifiable (403s automated fetches, sources conflict). Crucially Keepa is
+  Amazon-only, so it **backfills `price_point` rather than replacing it** — added a `provider` column so
+  the subscription decision defers to Phase 10. Explicitly wrote *against* scraping Keepa's free
+  extension through the persistent Chrome context, so it doesn't get proposed as clever later.
+- **`SPEC.md` contradicts itself on cost, and Phase 5 is what exposed it.** `llm.ts` records a real
+  measurement — a 60-row eBay hunt cost **$0.157, of which $0.118 was extraction**. The promised
+  "dozens to hundreds" of watchlists is ~900 hunts/mo ≈ **$141/mo** against a stated $10–50 ceiling.
+  Ben chose **$25/mo** deliberately, to force the discipline.
+- Consequence: the **Haiku A/B test is now a blocker, not a Phase 4 leftover**. Soft degradation's only
+  meaningful lever is the cheap extraction model (extraction is 75% of hunt cost), and
+  `MAGPIE_EXTRACT_MODEL` is currently unset — so at 80% of budget Magpie would announce it was
+  protecting spend while having no way to reduce it. Spec now requires a warning naming the unset var.
+- Cost plumbing was better than assumed: OpenRouter already reports real USD, `withUsage()` brackets by
+  async context, and `/hunt` + `/watch add` correctly bill parse cost via `initialCostCents`. The one
+  gap is structural — **spend only becomes durable when it lands on a `hunt` row**, so an abandoned
+  `/advise` thread bills nothing. Small now, fatal at Phase 8 where the router fires per message. Hence
+  a dedicated `spend` ledger rather than `SUM(hunt.cost_cents)`.
+- Ledger stores **`cost_micros`, not cents**: `withUsage` rounds up per *bracket* (correct), but
+  rounding per *call* would turn four 0.3¢ calls into 4¢ — a ~2× overcount making a $25 ceiling behave
+  like $12. Shipped as an explicit regression test.
+
+**Shipped:** `docs/superpowers/specs/2026-07-30-magpie-vision-design.md` (north-star, resequences SPEC
+§14 into phases 5–12) and `2026-07-30-phase-5-foundations-design.md` (implementation-ready). Branch
+`docs/vision-buy-anything`, 3 commits, not pushed.
+
+**Open / next:** Ben read the Phase 5 spec and explicitly deferred the implementation plan. Phase order
+is 5 Foundations → 6 Promos → 7 Catalog (6/7 swapped at his call; independent) → 8 Conversational →
+9 Style → 10 Routines → 11 Grocery → 12 Hub. Unresolved: catalog tag vocabulary, per-source quality
+metric, **style-watch dedup** (`watch_hit` keys by listing, but a style watch sees an endless stream of
+different-but-equivalent garments), promo-parse false-positive rate.
+
+*Session spend: 9.64M tok (in 193 · out 158.6k · cache r 8.66M / w 822.5k) · ~$16.52 · opus-5 · 10:02→12:44*
+
 ### [[07-29-26 Wed]] — Phase 4 hardening complete: pacing backoff, BROWSER_CHANNEL, vision fallback (8/8, merge-ready)
 
 Ben asked "what's next" — the resume-point memory said `phase-4-geo` was unmerged; it wasn't
