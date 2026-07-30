@@ -66,8 +66,10 @@ export async function extractListingsFromImage(
       `Target item: ${target.description}\n\n` +
       `Anchors on the page (link text -> href; only these hrefs may be used as a listing's url):\n${formatAnchors(anchors.slice(0, MAX_ANCHORS))}`,
     images: [image],
-    // Vision fallback is opt-in via MAGPIE_VISION_MODEL; undefined falls through
-    // to genObject's default (MAGPIE_MODEL), same pattern as extractionModel().
+    // visionModel() only picks WHICH model to use; undefined falls through to
+    // genObject's default (MAGPIE_MODEL), same pattern as extractionModel().
+    // Whether vision fallback runs AT ALL is a separate gate, checked once in
+    // src/index.ts (MAGPIE_VISION_FALLBACK_ENABLED) — this module has no say.
     model: visionModel(),
   });
 

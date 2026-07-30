@@ -93,14 +93,14 @@ describe('extractionModel — the opt-in cheap-extraction lever', () => {
   });
 });
 
-describe('visionModel — the opt-in vision-fallback lever (Task 5)', () => {
+describe('visionModel — model override for vision fallback (opt-in gate is MAGPIE_VISION_FALLBACK_ENABLED, wired separately in index.ts)', () => {
   const saved = process.env.MAGPIE_VISION_MODEL;
   afterEach(() => {
     if (saved === undefined) delete process.env.MAGPIE_VISION_MODEL;
     else process.env.MAGPIE_VISION_MODEL = saved;
   });
 
-  it('is off unless MAGPIE_VISION_MODEL names a model — unset and empty both mean "no vision fallback"', () => {
+  it('falls through to undefined (genObject default MAGPIE_MODEL) — unset and empty both mean "use the default model"', () => {
     delete process.env.MAGPIE_VISION_MODEL;
     expect(visionModel()).toBeUndefined();
     process.env.MAGPIE_VISION_MODEL = '';
