@@ -27,6 +27,32 @@ export const rawListingSchema = z.object({
 });
 export type RawListing = z.infer<typeof rawListingSchema>;
 
+/**
+ * Validates a batch of extracted rows against rawListingSchema, dropping invalid
+ * ones with a warning per dropped row and a summary log. Used after LLM extraction
+ * to filter rows to usable shape before further processing.
+ *
+ * @param rows - Unknown rows from extraction, each to be validated
+ * @param label - Label for log messages (e.g. "extract"), used as [label] prefix
+ * @returns Array of valid RawListing objects, others dropped with console warnings
+ */
+export function keepValidRows(rows: unknown[], label: string): RawListing[] {
+  const kept: RawListing[] = [];
+  for (const row of rows) {
+    const parsed = rawListingSchema.safeParse(row);
+    if (parsed.success) {
+      kept.push(parsed.data);
+    } else {
+      console.warn(
+        `[${label}] dropped invalid row: ${JSON.stringify(row)} — ` +
+          parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+      );
+    }
+  }
+  console.log(`[${label}] kept ${kept.length}/${rows.length} rows`);
+  return kept;
+}
+
 /** §5.4 `listing` shape minus id/seen-timestamps — what upsertListing consumes. */
 export interface NormalizedListing {
   source: SourceId;

@@ -5,6 +5,110 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-29-26 Wed]] — Phase 4 hardening complete: pacing backoff, BROWSER_CHANNEL, vision fallback (8/8, merge-ready)
+
+Ben asked "what's next" — the resume-point memory said `phase-4-geo` was unmerged; it wasn't
+(merged 07-24, see below). Corrected course: re-derived actual state from `CHECKLIST.md`/`log.md`/
+`git log` instead of trusting the stale note, then picked the one open item that needed no live
+Discord/region decision from Ben — Phase 4's three hardening boxes (pacing, detection mitigations,
+vision/screenshot fallback) — over Facebook Marketplace (explicitly wants Ben present) and the
+Haiku A/B test (deferred).
+
+**Decisions (confirmed with Ben via plan-mode questions):** vision fallback triggers on both a
+thrown adapter error *and* a legitimately-empty result set; vision model defaults to `MAGPIE_MODEL`,
+override via `MAGPIE_VISION_MODEL`, no hard cost ceiling in code (stays visible via `llm.ts`'s
+logging); screenshots sent to the LLM provider **as-is**, no cropping — CLAUDE.md's "never
+screenshotted" invariant is about Discord, not the LLM call; challenge cooldown defaults to 60min,
+global, env-overridable; `ChallengeDetectedError` wired for eBay only this pass (the only source
+with an *observed* live block — no invented Craigslist heuristic); vision fallback ships opt-in via
+`MAGPIE_VISION_FALLBACK_ENABLED` (default off).
+
+**Shipped so far** on branch `phase-4-hardening` (subagent-driven-development, one implementer +
+one independent reviewer per task, 4 of 8 tasks landed, all review-clean):
+- **Task 1** (`439fbf0`) — `pacing.ts` gained `ChallengeDetectedError` + per-source cooldown
+  (unconditional-set-on-repeat, so a second challenge during cooldown naturally extends it); wired
+  into `ebay.ts`'s existing bot-challenge throw and `hunt.ts`'s catch block. Reviewer specifically
+  verified the cooldown-blocked throw stays a *plain* `Error`, not `ChallengeDetectedError` — reusing
+  the challenge type there would've let routine pacing guards perpetually re-extend a cooldown.
+- **Task 2** (`3ecf1f8`) — `session.ts` got a pure, testable `resolveLaunchOptions()` and a
+  `BROWSER_CHANNEL` env knob for `channel:'chrome'`. Empirically testing whether a real Chrome
+  install actually reduces fingerprinting is left to Ben via the existing `scripts/smoke-browser.ts`
+  — the code only adds the capability.
+- **Task 3** (`04ca1c0`) — pure lift-and-shift of `extract.ts`'s row-validation loop into
+  `sources/types.ts`'s `keepValidRows()`, unblocking reuse from the not-yet-built vision-extraction
+  module without a circular import.
+- **Task 4** (`8257cb7`) — `llm.ts` gained `genObject({images})` and `visionModel()`. First attempt
+  stalled on a harness watchdog mid-edit with a complete but uncommitted diff; rather than discard
+  it, handed the salvaged diff to a fresh implementer to *verify, not trust* — it checked the
+  multimodal message shape against the real installed `ai`/`@ai-sdk/provider-utils` v7 type
+  definitions rather than assuming, confirmed correct, and shipped as-is.
+- Also fixed a `noUncheckedIndexedAccess` typecheck error in `types.test.ts` that Task 3's review
+  missed (`bun run test` doesn't run `tsc`; now both are required per task in the plan's Global
+  Constraints).
+
+**Shipped, remaining four tasks** (same process, all review-clean after fix rounds where needed):
+- **Task 5** (`6d8fab2`→`79dbdac`) — `visionExtract.ts` (`extractListingsFromImage`) and
+  `visionFallback.ts` (`runVisionFallback`: screenshot + `$$eval` anchors + LLM call), reusing
+  `extract.ts`'s schema rather than inventing one. Review caught two Important issues on first pass:
+  the reused schema's `url` field still carried the *text*-path's "copy from the 'URL:' line"
+  instruction, conflicting with the vision path's own anchor-based instruction (fixed via
+  `.extend()` overriding just that field, not a new schema); and an unbounded anchor list risked a
+  10-20k-token prompt on a real results page (capped at 200). One fix round, clean re-review.
+- **Task 6** (`d3aed52`→`2a41d4f`) — wired vision fallback into `hunt.ts`'s per-adapter loop: a
+  non-challenge search error or a zero-row result now recovers via `deps.visionFallback` when
+  provided, flowing through the *same* `toListing`/`upsertListing` path as normal rows. Flagged in
+  the plan as highest-risk (core orchestration loop) and it earned that label — review (on opus)
+  found a Critical bug: the empty-result fallback check lived inside the same try/catch as the
+  original search, so if *that* vision call itself threw, the shared catch re-invoked vision a
+  second time and silently discarded the first error. Fixed by moving the empty-check outside the
+  try/catch with a `recovered` guard; one fix round, clean re-review, regression test added.
+- **Task 7** (`a6bd9ee`) — `index.ts` wiring: `MAGPIE_CHALLENGE_COOLDOWN_MS` (parsed int, defaults
+  60min on unset/NaN) and `MAGPIE_VISION_FALLBACK_ENABLED === 'true'` deciding whether `runVisionFallback`
+  or `undefined` gets passed as `deps.visionFallback` — the *only* place either gate is checked;
+  `hunt.ts`/`visionFallback.ts`/`visionExtract.ts` stay env-unaware by design. Clean review, no fix
+  round.
+- **Task 8** (`1848382`→`546749c`) — `vision-fallback-e2e.test.ts` (real Playwright page against the
+  local fixture server, LLM mocked), `scripts/smoke-vision.ts` for Ben's manual cost/quality check,
+  `CHECKLIST.md`'s three hardening boxes checked. Review found one Important issue: the smoke script
+  screenshotted right after `domcontentloaded`, before eBay's client-rendered results actually
+  appear — exactly the script meant to inform the go/no-go on enabling vision fallback, giving a
+  plausible-but-wrong low reading. Fixed with a `waitForLoadState('networkidle')` wait; bundled in a
+  cheap assertion that the screenshot's `imageCount` actually reaches the LLM call. One fix round,
+  clean re-review (first re-review attempt hit an infra error mid-response, unrelated to the code —
+  retried fresh).
+
+**Final whole-branch review** (opus, after all 8 tasks individually clean): merge-ready on code, no
+fix round needed. It traced both the non-challenge-error-with-vision-enabled path and the
+challenge-with-vision-enabled path end to end through the real code (confirmed the multimodal
+message shape against the installed `@openrouter/ai-sdk-provider` source, not just typechecking),
+verified cost accounting fires exactly once per `genObject` call on every path, and confirmed the
+two opt-in gates (`MAGPIE_VISION_FALLBACK_ENABLED` for whether fallback runs at all,
+`MAGPIE_VISION_MODEL` for which model) stay genuinely independent and checked only in `index.ts`.
+Found two Important **documentation** gaps (no code changes): this log entry was stale at 4/8, and
+`SPEC.md` §10's config table was missing the three new env vars Task 7 added (only `.env.example`
+had them). Also two Minor leftover comments in `visionExtract.ts` and `llm.test.ts` still described
+`MAGPIE_VISION_MODEL` as the opt-in trigger rather than `MAGPIE_VISION_FALLBACK_ENABLED` — a stale
+claim from before Task 4's doc fix, worth correcting since it could lead to setting the wrong var
+and expecting fallback to turn on. All four fixed directly (docs/comments only, no logic change,
+`bun run test`/`typecheck` reconfirmed clean after).
+
+**The one thing to flag to Ben before enabling the flag for real** (from the final review, not new):
+vision fallback fires on every *legitimately empty* result, not just errors — for `/watch`, "nothing
+new" is the steady state, so an enabled fallback means a screenshot + vision call per source per
+scheduler tick, indefinitely. The plan's mitigations (default off, `smoke-vision.ts` for a manual
+cost/quality look first) are the right shape for this, but it's the cost lever to watch after the
+first smoke run — not the error-recovery trigger, which only fires on genuine adapter breakage.
+
+Full plan at `~/.claude/plans/so-what-s-next-in-delegated-barto.md`; ledger at
+`.superpowers/sdd/so-what-s-next-in-delegated-barto/progress.md` (every task's deferred Minor
+findings and plan-mandated notes live there, triaged by the final review). Branch is 15 commits
+ahead of `main` (`git merge-base` = `1f801ce`), all suites green (197 unit · 17 bun-e2e · typecheck
+clean). Next: merge (`finishing-a-development-branch` — likely a local `--no-ff` merge per Ben's
+established style, confirm with Ben rather than assume).
+
+*Session spend: 25.15M tok (in 434 · out 171.3k · cache r 23.83M / w 1.15M) · ~≥$12.64 · sonnet-5 + opus-4-7 + <synthetic> · 14:35→20:59*
+*Session spend: 24.04M tok (in 484 · out 157.6k · cache r 23.28M / w 606.0k) · ~$11.19 · sonnet-5 + opus-4-7 · 20:59→22:29*
+
 ### [[07-24-26 Fri]] — `phase-4-geo` merged to main; Craigslist taken live (four bugs)
 
 **Shipped — Craigslist live-verified, and the pre-live guess was wrong in four ways.** Ben

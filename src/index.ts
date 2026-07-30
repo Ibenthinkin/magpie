@@ -21,6 +21,7 @@ import { makeHub } from './discord/hub';
 import { makeDiscordReporter } from './discord/report';
 import { runHunt } from './engine/hunt';
 import { parseTarget } from './engine/target';
+import { runVisionFallback } from './engine/visionFallback';
 import { log, logError } from './log';
 import { resolveAdapters } from './sources/registry';
 import { startScheduler } from './watch/scheduler';
@@ -70,7 +71,16 @@ async function main(): Promise<void> {
   });
 
   const reporter = makeDiscordReporter(gateway.send, { watches });
-  const pace = makePacer();
+  // Optional: how long a source cools down after serving a bot challenge.
+  // Unset or unparseable falls back to the 60-minute default (SPEC Phase 4
+  // hardening, Task 7).
+  const parsedCooldownMs = parseInt(process.env.MAGPIE_CHALLENGE_COOLDOWN_MS ?? '', 10);
+  const challengeCooldownMs = Number.isFinite(parsedCooldownMs) ? parsedCooldownMs : 60 * 60 * 1000;
+  const { pace, reportChallenge } = makePacer({ challengeCooldownMs });
+  // Opt-in vision recovery (SPEC Phase 4 hardening): only wire the real
+  // fallback function when explicitly enabled — runHunt itself has zero
+  // env-var awareness and just checks whether visionFallback is defined.
+  const visionFallback = process.env.MAGPIE_VISION_FALLBACK_ENABLED === 'true' ? runVisionFallback : undefined;
   const worker = startWorker({
     hunts,
     runHunt: (hunt) =>
@@ -83,6 +93,8 @@ async function main(): Promise<void> {
         profile,
         reporter,
         pace,
+        reportChallenge,
+        visionFallback,
       }),
   });
 

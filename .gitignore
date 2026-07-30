@@ -13,3 +13,6 @@ browser-profile/
 # test artifacts
 test-results/
 playwright-report/
+
+# agent scratch workspace
+.superpowers/

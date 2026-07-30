@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { Pacer } from '../browser/pacing';
+import { ChallengeDetectedError, type Pacer } from '../browser/pacing';
 import type { HuntRow, HuntsRepo, ListingsRepo, NewHuntResult, ProfileRepo, WatchesRepo } from '../db/types';
 import { log, logError } from '../log';
 import type { RawListing, SourceAdapter } from '../sources/types';
@@ -7,6 +7,7 @@ import { applyConstraints } from './filter';
 import { withUsage } from './llm';
 import { rankListings, type RankedListing } from './rank';
 import { targetSpecSchema, type TargetSpec } from './target';
+import type { VisionFallback } from './visionFallback';
 
 // The hunt engine: one hunt end to end per SPEC §8. All three user modes
 // funnel through here; watch_run mode adds step 6 (dedup — notify each
@@ -33,6 +34,16 @@ export interface HuntDeps {
   profile: Pick<ProfileRepo, 'activeFacts'>;
   reporter: Reporter;
   pace: Pacer;
+  /** Puts a source into cooldown after it serves a bot challenge (SPEC Phase 4 hardening). */
+  reportChallenge: (source: string) => void;
+  /**
+   * Opt-in vision recovery (SPEC Phase 4 hardening): screenshots the page and
+   * extracts via LLM vision when an adapter's deterministic search() fails or
+   * comes back empty. Undefined = fallback disabled entirely (Task 7 wires the
+   * real function behind MAGPIE_VISION_FALLBACK_ENABLED); hunt.ts only ever
+   * checks whether this is defined, no other gating lives here.
+   */
+  visionFallback?: VisionFallback;
   now?: () => string;
 }
 
@@ -57,7 +68,31 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
         for (const adapter of adapters) {
           try {
             await deps.pace(adapter.source, adapter.rateLimit);
-            const raws = await adapter.search(page, target);
+            let raws: RawListing[];
+            let recovered = false;
+            try {
+              raws = await adapter.search(page, target);
+            } catch (searchErr) {
+              // Challenge pages have nothing useful to look at, and a disabled
+              // fallback means recovery isn't available — either way, propagate
+              // exactly as before Task 6 so the outer catch's reportChallenge /
+              // sourceErrors handling fires unchanged. A vision fallback that
+              // itself throws also propagates here — fail loud, not swallowed.
+              if (!deps.visionFallback || searchErr instanceof ChallengeDetectedError) throw searchErr;
+              log('hunt.visionRecover', { hunt: huntRow.id, source: adapter.source, error: message(searchErr) });
+              raws = await deps.visionFallback(page, adapter.source, target);
+              recovered = true;
+            }
+            // Empty is not an error — but it may still mean the deterministic
+            // path missed usable content, so give vision one shot at it. This
+            // check sits OUTSIDE the try/catch above: an error thrown from this
+            // call must land in the outer per-adapter catch exactly once, not
+            // be reinterpreted as a search() failure and trigger a second vision
+            // call. `recovered` also stops an already-recovered empty result
+            // from triggering a second, redundant fallback call.
+            if (!recovered && raws.length === 0 && deps.visionFallback) {
+              raws = await deps.visionFallback(page, adapter.source, target);
+            }
             let dropped = 0;
             for (const raw of raws) {
               const norm = adapter.toListing(raw);
@@ -70,6 +105,7 @@ export async function runHunt(huntRow: HuntRow, deps: HuntDeps): Promise<void> {
             }
             log('hunt.search', { hunt: huntRow.id, source: adapter.source, kept: raws.length - dropped, dropped });
           } catch (err) {
+            if (err instanceof ChallengeDetectedError) deps.reportChallenge(adapter.source);
             sourceErrors.push(`${adapter.source}: ${message(err)}`);
             logError('hunt.search', err, { hunt: huntRow.id, source: adapter.source });
           }

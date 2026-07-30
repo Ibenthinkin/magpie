@@ -332,15 +332,19 @@ One hunt, end to end (`src/engine/hunt.ts`):
 | `MAGPIE_DB_PATH` | SQLite file (default `data/magpie.db`) |
 | `BROWSER_PROFILE_DIR` | persistent Chromium profile (default `browser-profile/`) |
 | `HEADLESS` | `false` for login/debug sessions |
+| `BROWSER_CHANNEL` | *optional* — Playwright `channel` (e.g. `chrome`) for a real Chrome install instead of bundled Chromium; unset preserves current behavior |
 | `CRAIGSLIST_REGION` | *optional* — region subdomain (e.g. `sfbay`) for the opt-in craigslist source; Craigslist has no national search |
+| `MAGPIE_CHALLENGE_COOLDOWN_MS` | *optional* — how long a source is skipped after a detected bot challenge (default 60 min) |
+| `MAGPIE_VISION_FALLBACK_ENABLED` | *optional* — `true` to enable the vision/screenshot extraction fallback; default off (nothing changes until set) |
+| `MAGPIE_VISION_MODEL` | *optional* — vision-capable model override for the fallback pass; unset falls through to `MAGPIE_MODEL` |
 
 ## 11. Security considerations
 
-- **The browser profile is the crown jewel** — it holds live logged-in sessions. `browser-profile/` is gitignored, never leaves the host, directory mode 700. No screenshots of logged-in pages are persisted or posted to Discord.
+- **The browser profile is the crown jewel** — it holds live logged-in sessions. `browser-profile/` is gitignored, never leaves the host, directory mode 700. No screenshots of logged-in pages are persisted to disk or posted to Discord — the one exception is the opt-in vision fallback (§`MAGPIE_VISION_FALLBACK_ENABLED`), which sends an in-memory screenshot to the configured LLM provider only, same trust boundary as extracted page text crossing that line today.
 - **Discord surface** — allowlisted user ids only; guild-scoped commands; the bot token grants no more than the one guild. Sensitive data (profile facts) lives in SQLite on the homelab, not in Discord history — embeds carry queries + public listing data only.
 - **No inbound surface** — the service makes outbound connections only.
 - **Secrets** — all in `.env`; nothing personal (paths, memberships, measurements) in this repo or spec; profile facts are runtime data, not code.
-- **Prompt-injection posture** — extracted page text is untrusted input: extraction prompts treat it as data-to-parse (schema-constrained `generateObject`), never as instructions; verdicts cite only structured fields.
+- **Prompt-injection posture** — extracted page text is untrusted input: extraction prompts treat it as data-to-parse (schema-constrained `generateObject`), never as instructions; verdicts cite only structured fields. The vision fallback's screenshot + anchor list get the same treatment: framed explicitly as data to parse, and a listing's URL may only be a href copied verbatim from the anchor list, never constructed.
 
 ## 12. Testing strategy
 
