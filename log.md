@@ -5,6 +5,43 @@ messages. `/brief` reads this. Newest on top.
 
 ## 2026-07
 
+### [[07-31-26 Fri]] — Facebook Marketplace: the burner-account plan is wrong, manual-in-the-loop is right
+
+Follow-up conversation on `docs/facebook-marketplace-account.md`. Ben's position: Marketplace is where
+the good local stuff is, but he doesn't want a Facebook account — Firefox Facebook Container, AdGuard,
+every tracking guard that survives daily use. Question was whether a **real** account with his real
+number and email, browser-only and never the mobile apps, is an acceptable trade.
+
+**Findings — three corrections to the guide's threat model.**
+- **Magpie's Chrome profile is outside all of that hardening.** `launchPersistentContext` runs a stock
+  Chrome with no container and no blockers, logging into Facebook and doing nothing but Marketplace
+  searches. It's simultaneously the most exposed and the most fingerprintable surface, and none of the
+  daily-driver protections reach it. This wasn't in the doc at all.
+- **Instagram already settled the identity question.** Meta has the phone, email and device graph; a
+  Facebook account adds a *behavior stream*, not an identity — and the stream is purchase intent, the
+  most commercially valuable category there is. The off-platform surface (pixel/business tools, which
+  profile non-users too) barely moves, and the container + blockers already blunt it.
+- **The doc's §1.4 was written against a wrong premise.** It assumed a real Facebook account with a
+  social graph to lose. There isn't one. But real-phone-real-email links the new account to
+  **Instagram**, Meta enforces across linked properties, and automated scraping is a terms violation —
+  so the account actually at risk is the one Ben uses.
+
+**Decision.** The privacy question and the ban question pull opposite ways: a real account is the better
+*privacy* posture (a plausible person survives where an empty burner gets ID-checkpointed) but the worse
+thing to lose. **Manual-in-the-loop resolves both** — Magpie composes and posts the Marketplace search
+URL to Discord, Ben clicks it. Real account, browser-only, no automation violation, Instagram never
+exposed. Cost is ranking and dedup on that one source. The guide ranked this third; on the corrected
+premise it's first, and the dedicated-burner path is effectively dead.
+
+Unchanged: the §1.1 logged-out test still comes first and may moot everything, and §1.5 new-account
+Marketplace gating applies no matter how real the credentials are.
+
+**Open / next:** rewrite `docs/facebook-marketplace-account.md` around real-account + manual-in-the-loop
+with the Chrome-profile gap called out (offered, not yet done — it's a shorter, different document).
+Phase 5 implementation plan still deliberately unwritten. Branch `docs/vision-buy-anything` unpushed.
+
+*Session spend: 1.25M tok (in 18 · out 24.6k · cache r 1.13M / w 86.9k) · ~$2.05 · opus-5 · 12:44→09:37*
+
 ### [[07-30-26 Thu]] — Vision reset: "help me buy anything", and Phase 5 costs out the watchlist promise
 
 Ben opened with a direction conversation rather than a task: Magpie should help with *any* purchase —
