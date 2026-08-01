@@ -42,6 +42,48 @@ Phase 5 implementation plan still deliberately unwritten. Branch `docs/vision-bu
 
 *Session spend: 1.25M tok (in 18 · out 24.6k · cache r 1.13M / w 86.9k) · ~$2.05 · opus-5 · 12:44→09:37*
 
+**Later that day — seven external tools evaluated; the free option nobody tested is still the answer.**
+
+Ben surfaced seven repos/services that might save build effort on Marketplace and the Phase 7 catalog.
+Six are dead ends. Three (`gomarble-ai/facebook-ads-mcp-server`, `HagaiHen/facebook-mcp-server`,
+`Livia-Zaharia/just_facebook_mcp`) are Graph-API wrappers for **Ads reporting and Page management** —
+the wrong Facebook product, no listing surface at all. `jdcodes1/facebook-marketplace-mcp` is *worse
+than what we already rejected*: it pulls live session cookies out of Chrome's macOS Keychain and
+replays Facebook's internal GraphQL API **as the real account**, with core extraction broken per its
+own open issue. `secondhand-mcp` survives only as a **reading reference** (MIT) — no Mercari, no
+Vinted, so it doesn't advance the catalog thesis.
+
+**Bright Data is real, but the first pass got its economics wrong.** The `$250 min` is the bulk
+*Datasets* product and the `$1.50/1k` is *Web Unlocker* — neither is how Marketplace bills. The right
+product is the **Web Scraper API** ($1.50/1k **records**, 5,000 free records/mo, no minimum, prepaid
+hard stop), and its **MCP server is URL-only** — no keyword search, so the MCP path is a trap. Async
+delivery supports **polling**, so outbound-only survives. *Meta v. Bright Data* (N.D. Cal. 3:23-cv-00077,
+Chen J., 23 Jan 2024) held Meta's Terms don't bind logged-off visitors scraping public data; Meta
+dismissed the remainder and waived appeal.
+
+**The finding that reframes it: §1.1 was never run, and we now have evidence it might pass.**
+`secondhand-mcp` reaches Marketplace over *plain unauthenticated fetch*, Bright Data's whole posture is
+logged-out-public-only, and **Ben has no Facebook account to lose**. Checked against the code, the
+asymmetry is decisive: a logged-out adapter is a `craigslist.ts` clone needing **zero engine changes**,
+while a Bright Data adapter would have to take a `Page` it ignores, `hunt.ts:66` would launch Chrome
+anyway, and `hunt.ts:93-95` would fire the vision fallback on a never-navigated blank tab and bill for
+it. Worse, `llm.ts` exports **no non-LLM cost sink** — a metered vendor today means spend sitting
+*outside* the meter Phase 5 exists to build.
+
+**Decisions.** Adopt nothing; create no vendor account. Run the free §1.1 probe first
+(`scripts/smoke-marketplace.ts`, throwaway Chromium — never the persistent profile), ~5 runs over ~3
+days to test whether one residential IP survives a realistic cadence. If it passes → hand-written
+`facebook.ts`, registered but **out of `DEFAULT_SOURCES`** like Craigslist, with `ChallengeDetectedError`
+wired *before* the first run. If it fails → Bright Data, but **gated behind Phase 5** so its cost is
+visible, which also adds two Phase 5 prerequisites: an exported non-LLM cost seam in `llm.ts`, and
+`SpendRecord.model` widened to accept a vendor name. Plan in
+`docs/superpowers/specs/2026-07-31-marketplace-access-decision.md`.
+
+**Open / next:** run the probe — it's the gate on everything above, and it may retire
+`docs/facebook-marketplace-account.md` outright. Phase 5 implementation plan still unwritten.
+
+*Session spend: 10.58M tok (in 208 · out 201.2k · cache r 8.41M / w 1.96M) · ~≥$21.26 · opus-5 + sonnet-5 + <synthetic> · 14:35→22:02*
+
 ### [[07-30-26 Thu]] — Vision reset: "help me buy anything", and Phase 5 costs out the watchlist promise
 
 Ben opened with a direction conversation rather than a task: Magpie should help with *any* purchase —
