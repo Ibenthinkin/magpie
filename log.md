@@ -3,6 +3,24 @@
 Narrative record of decisions, findings, and dead-ends that don't live in commit
 messages. `/brief` reads this. Newest on top.
 
+## 2026-08
+
+### [[08-03-26 Mon]] — One-pager pitch document
+
+Added `docs/pitch.md` — a standalone one-page summary of Magpie: the problem (comparison shopping
+across sites and memberships is manual and error-prone), what it does today (one-shot hunt, product
+advisor, watchlists, persistent profile, cost-metered LLM calls, eBay/Craigslist live with Marketplace
+next via the manual-in-the-loop handoff), where it's headed (price memory, self-expanding source
+catalog via site probing, style search, promotions inbox, plain-language interface, routine purchases),
+and why it's worth having. Framed around the single-engine thesis (`hunts` = target + objective) that
+already runs through `CLAUDE.md` and `SPEC.md`, restated for someone who hasn't read either.
+
+**Open / next:** Marketplace probe (`scripts/smoke-marketplace.ts`) still the gate on Phase 4's last
+source, per `docs/superpowers/specs/2026-07-31-marketplace-access-decision.md`. Phase 5 implementation
+plan still unwritten.
+
+*Session spend: 671.3k tok (in 24 · out 3.0k · cache r 590.7k / w 77.5k) · ~$0.46 · sonnet-5 · 17:15→17:15*
+
 ## 2026-07
 
 ### [[07-31-26 Fri]] — Facebook Marketplace: the burner-account plan is wrong, manual-in-the-loop is right
