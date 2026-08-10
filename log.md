@@ -3,7 +3,168 @@
 Narrative record of decisions, findings, and dead-ends that don't live in commit
 messages. `/brief` reads this. Newest on top.
 
+## 2026-08
+
+### [[08-03-26 Mon]] — One-pager pitch document
+
+Added `docs/pitch.md` — a standalone one-page summary of Magpie: the problem (comparison shopping
+across sites and memberships is manual and error-prone), what it does today (one-shot hunt, product
+advisor, watchlists, persistent profile, cost-metered LLM calls, eBay/Craigslist live with Marketplace
+next via the manual-in-the-loop handoff), where it's headed (price memory, self-expanding source
+catalog via site probing, style search, promotions inbox, plain-language interface, routine purchases),
+and why it's worth having. Framed around the single-engine thesis (`hunts` = target + objective) that
+already runs through `CLAUDE.md` and `SPEC.md`, restated for someone who hasn't read either.
+
+**Open / next:** Marketplace probe (`scripts/smoke-marketplace.ts`) still the gate on Phase 4's last
+source, per `docs/superpowers/specs/2026-07-31-marketplace-access-decision.md`. Phase 5 implementation
+plan still unwritten.
+
+*Session spend: 671.3k tok (in 24 · out 3.0k · cache r 590.7k / w 77.5k) · ~$0.46 · sonnet-5 · 17:15→17:15*
+
 ## 2026-07
+
+### [[07-31-26 Fri]] — Facebook Marketplace: the burner-account plan is wrong, manual-in-the-loop is right
+
+Follow-up conversation on `docs/facebook-marketplace-account.md`. Ben's position: Marketplace is where
+the good local stuff is, but he doesn't want a Facebook account — Firefox Facebook Container, AdGuard,
+every tracking guard that survives daily use. Question was whether a **real** account with his real
+number and email, browser-only and never the mobile apps, is an acceptable trade.
+
+**Findings — three corrections to the guide's threat model.**
+- **Magpie's Chrome profile is outside all of that hardening.** `launchPersistentContext` runs a stock
+  Chrome with no container and no blockers, logging into Facebook and doing nothing but Marketplace
+  searches. It's simultaneously the most exposed and the most fingerprintable surface, and none of the
+  daily-driver protections reach it. This wasn't in the doc at all.
+- **Instagram already settled the identity question.** Meta has the phone, email and device graph; a
+  Facebook account adds a *behavior stream*, not an identity — and the stream is purchase intent, the
+  most commercially valuable category there is. The off-platform surface (pixel/business tools, which
+  profile non-users too) barely moves, and the container + blockers already blunt it.
+- **The doc's §1.4 was written against a wrong premise.** It assumed a real Facebook account with a
+  social graph to lose. There isn't one. But real-phone-real-email links the new account to
+  **Instagram**, Meta enforces across linked properties, and automated scraping is a terms violation —
+  so the account actually at risk is the one Ben uses.
+
+**Decision.** The privacy question and the ban question pull opposite ways: a real account is the better
+*privacy* posture (a plausible person survives where an empty burner gets ID-checkpointed) but the worse
+thing to lose. **Manual-in-the-loop resolves both** — Magpie composes and posts the Marketplace search
+URL to Discord, Ben clicks it. Real account, browser-only, no automation violation, Instagram never
+exposed. Cost is ranking and dedup on that one source. The guide ranked this third; on the corrected
+premise it's first, and the dedicated-burner path is effectively dead.
+
+Unchanged: the §1.1 logged-out test still comes first and may moot everything, and §1.5 new-account
+Marketplace gating applies no matter how real the credentials are.
+
+**Open / next:** rewrite `docs/facebook-marketplace-account.md` around real-account + manual-in-the-loop
+with the Chrome-profile gap called out (offered, not yet done — it's a shorter, different document).
+Phase 5 implementation plan still deliberately unwritten. Branch `docs/vision-buy-anything` unpushed.
+
+*Session spend: 1.25M tok (in 18 · out 24.6k · cache r 1.13M / w 86.9k) · ~$2.05 · opus-5 · 12:44→09:37*
+
+**Later that day — seven external tools evaluated; the free option nobody tested is still the answer.**
+
+Ben surfaced seven repos/services that might save build effort on Marketplace and the Phase 7 catalog.
+Six are dead ends. Three (`gomarble-ai/facebook-ads-mcp-server`, `HagaiHen/facebook-mcp-server`,
+`Livia-Zaharia/just_facebook_mcp`) are Graph-API wrappers for **Ads reporting and Page management** —
+the wrong Facebook product, no listing surface at all. `jdcodes1/facebook-marketplace-mcp` is *worse
+than what we already rejected*: it pulls live session cookies out of Chrome's macOS Keychain and
+replays Facebook's internal GraphQL API **as the real account**, with core extraction broken per its
+own open issue. `secondhand-mcp` survives only as a **reading reference** (MIT) — no Mercari, no
+Vinted, so it doesn't advance the catalog thesis.
+
+**Bright Data is real, but the first pass got its economics wrong.** The `$250 min` is the bulk
+*Datasets* product and the `$1.50/1k` is *Web Unlocker* — neither is how Marketplace bills. The right
+product is the **Web Scraper API** ($1.50/1k **records**, 5,000 free records/mo, no minimum, prepaid
+hard stop), and its **MCP server is URL-only** — no keyword search, so the MCP path is a trap. Async
+delivery supports **polling**, so outbound-only survives. *Meta v. Bright Data* (N.D. Cal. 3:23-cv-00077,
+Chen J., 23 Jan 2024) held Meta's Terms don't bind logged-off visitors scraping public data; Meta
+dismissed the remainder and waived appeal.
+
+**The finding that reframes it: §1.1 was never run, and we now have evidence it might pass.**
+`secondhand-mcp` reaches Marketplace over *plain unauthenticated fetch*, Bright Data's whole posture is
+logged-out-public-only, and **Ben has no Facebook account to lose**. Checked against the code, the
+asymmetry is decisive: a logged-out adapter is a `craigslist.ts` clone needing **zero engine changes**,
+while a Bright Data adapter would have to take a `Page` it ignores, `hunt.ts:66` would launch Chrome
+anyway, and `hunt.ts:93-95` would fire the vision fallback on a never-navigated blank tab and bill for
+it. Worse, `llm.ts` exports **no non-LLM cost sink** — a metered vendor today means spend sitting
+*outside* the meter Phase 5 exists to build.
+
+**Decisions.** Adopt nothing; create no vendor account. Run the free §1.1 probe first
+(`scripts/smoke-marketplace.ts`, throwaway Chromium — never the persistent profile), ~5 runs over ~3
+days to test whether one residential IP survives a realistic cadence. If it passes → hand-written
+`facebook.ts`, registered but **out of `DEFAULT_SOURCES`** like Craigslist, with `ChallengeDetectedError`
+wired *before* the first run. If it fails → Bright Data, but **gated behind Phase 5** so its cost is
+visible, which also adds two Phase 5 prerequisites: an exported non-LLM cost seam in `llm.ts`, and
+`SpendRecord.model` widened to accept a vendor name. Plan in
+`docs/superpowers/specs/2026-07-31-marketplace-access-decision.md`.
+
+**Open / next:** run the probe — it's the gate on everything above, and it may retire
+`docs/facebook-marketplace-account.md` outright. Phase 5 implementation plan still unwritten.
+
+*Session spend: 10.58M tok (in 208 · out 201.2k · cache r 8.41M / w 1.96M) · ~≥$21.26 · opus-5 + sonnet-5 + <synthetic> · 14:35→22:02*
+
+### [[07-30-26 Thu]] — Vision reset: "help me buy anything", and Phase 5 costs out the watchlist promise
+
+Ben opened with a direction conversation rather than a task: Magpie should help with *any* purchase —
+obscure category-specific marketplaces (a Japanese camera auction site), style search across new and
+used (Etsy vs Poshmark/Vinted), preference questions ("is color or quality more important?"), an
+onboarding interview, cheapest-routine-buys from Amazon/groceries, and forwarded promo emails. Ran
+`superpowers:brainstorming`. Scoped it as **seven subsystems, not a feature list**, and decomposed
+rather than trying to spec it whole.
+
+**The reframe that made it tractable.** SPEC's "three modes of one engine" doesn't survive this, but
+the instinct does — replaced modes with **four dimensions**: target kind (`exact`/`style`/`consumable`)
+× objective (`cheapest`/`best_fit`/`best_value`) × trigger (asked/scheduled/promo/threshold) × sources
+(catalog-routed). `/hunt` is `(exact, cheapest, asked)`; the t-shirt is `(style, best_fit)`. Everything
+still produces an ordinary `hunt` row, so queue/worker/dedup/cost-accounting survive untouched. That's
+the load-bearing constraint on all future work.
+
+**Decisions (all via brainstorming questions):** source catalog grows by seed + **probe** + rare
+explicit discovery — the probe *drives* a site to learn its search-URL template rather than letting an
+LLM guess one, which is the whole reason breadth is feasible; hand-written adapters become an override,
+not the only path. Style hunts get thumbnail vision **plus reference images** (drop a photo in Discord).
+Hunts **never pause for input** — clarify before starting only when it changes source selection, else
+assume-and-learn from corrections (rejected `awaiting_input` + resume as too much complexity in the
+most reliable part of the system). Routines seed from Amazon order history **once**, then curated
+(rejected continuous sync as exactly the ban risk SPEC §15 flags). Promos cross-check watches/routines
+on arrival **and** nudge before expiry. Conversational surface is an **intent router in front of the
+existing commands**, not a full agent loop.
+
+**Findings.**
+- Ben asked whether Amazon price-history APIs exist. They do, but: **Keepa** is the only serious one and
+  API access is a *separate* subscription (~€49/mo) from the €19 Pro plan everyone means; Amazon's own
+  PA-API never returned history, requires Associates-with-sales, and is deprecated 2026-05-15;
+  CamelCamelCamel unverifiable (403s automated fetches, sources conflict). Crucially Keepa is
+  Amazon-only, so it **backfills `price_point` rather than replacing it** — added a `provider` column so
+  the subscription decision defers to Phase 10. Explicitly wrote *against* scraping Keepa's free
+  extension through the persistent Chrome context, so it doesn't get proposed as clever later.
+- **`SPEC.md` contradicts itself on cost, and Phase 5 is what exposed it.** `llm.ts` records a real
+  measurement — a 60-row eBay hunt cost **$0.157, of which $0.118 was extraction**. The promised
+  "dozens to hundreds" of watchlists is ~900 hunts/mo ≈ **$141/mo** against a stated $10–50 ceiling.
+  Ben chose **$25/mo** deliberately, to force the discipline.
+- Consequence: the **Haiku A/B test is now a blocker, not a Phase 4 leftover**. Soft degradation's only
+  meaningful lever is the cheap extraction model (extraction is 75% of hunt cost), and
+  `MAGPIE_EXTRACT_MODEL` is currently unset — so at 80% of budget Magpie would announce it was
+  protecting spend while having no way to reduce it. Spec now requires a warning naming the unset var.
+- Cost plumbing was better than assumed: OpenRouter already reports real USD, `withUsage()` brackets by
+  async context, and `/hunt` + `/watch add` correctly bill parse cost via `initialCostCents`. The one
+  gap is structural — **spend only becomes durable when it lands on a `hunt` row**, so an abandoned
+  `/advise` thread bills nothing. Small now, fatal at Phase 8 where the router fires per message. Hence
+  a dedicated `spend` ledger rather than `SUM(hunt.cost_cents)`.
+- Ledger stores **`cost_micros`, not cents**: `withUsage` rounds up per *bracket* (correct), but
+  rounding per *call* would turn four 0.3¢ calls into 4¢ — a ~2× overcount making a $25 ceiling behave
+  like $12. Shipped as an explicit regression test.
+
+**Shipped:** `docs/superpowers/specs/2026-07-30-magpie-vision-design.md` (north-star, resequences SPEC
+§14 into phases 5–12) and `2026-07-30-phase-5-foundations-design.md` (implementation-ready). Branch
+`docs/vision-buy-anything`, 3 commits, not pushed.
+
+**Open / next:** Ben read the Phase 5 spec and explicitly deferred the implementation plan. Phase order
+is 5 Foundations → 6 Promos → 7 Catalog (6/7 swapped at his call; independent) → 8 Conversational →
+9 Style → 10 Routines → 11 Grocery → 12 Hub. Unresolved: catalog tag vocabulary, per-source quality
+metric, **style-watch dedup** (`watch_hit` keys by listing, but a style watch sees an endless stream of
+different-but-equivalent garments), promo-parse false-positive rate.
+
+*Session spend: 9.64M tok (in 193 · out 158.6k · cache r 8.66M / w 822.5k) · ~$16.52 · opus-5 · 10:02→12:44*
 
 ### [[07-29-26 Wed]] — Phase 4 hardening complete: pacing backoff, BROWSER_CHANNEL, vision fallback (8/8, merge-ready)
 
